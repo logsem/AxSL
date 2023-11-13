@@ -1,0 +1,17 @@
+(include_subdirs qualified)
+(coq.theory
+ (name self)
+ (stdlib yes)
+ (theories
+   Ltac2
+   stdpp
+   iris
+   iris_named_props
+   RecordUpdate
+   Hammer.Tactics
+   bbv
+   Sail
+   SSCCommon
+   ISASem
+ )
+)

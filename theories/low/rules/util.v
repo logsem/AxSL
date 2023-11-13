@@ -1,0 +1,71 @@
+(* This file contains the low-level proof rules for auxiliary operations *)
+From self.low.rules Require Import prelude.
+
+Import uPred.
+
+Section rules.
+  Context `{AAIrisG} `{Htg: !ThreadGNL}.
+
+  Import ThreadState.
+
+  Lemma reload `{!UserProt} {tid : Tid} {ts instr val}:
+    ThreadState.ts_reqs ts = EmptyInterp ->
+    ts.(ts_regs) !! RNPC = Some (val : RegVal) ->
+    (val.(reg_val)) ↦ᵢ instr -∗
+    SSWP (LThreadState.LTSNormal ts) @ tid {{ λ lts',
+      (* update lts' accordingly *)
+      ⌜lts' = LThreadState.LTSNormal ((reset_cntr ts) <| ts_reqs := (InstrInterp instr) |>) ⌝
+    }}.
+  Proof.
+    iIntros (Hreqs Hreg) "Hinstr".
+    rewrite sswp_eq /sswp_def /=.
+    iIntros (????) "H". iNamed "H".
+    inversion Hat_prog as [Hpg]. clear Hat_prog.
+    case_bool_decide as Hv.
+    {
+      rewrite (LThreadStep.step_progress_valid_is_reqs_nonempty _ _ _ ts) in Hv;[|done|done].
+      done.
+    }
+
+    iDestruct (instr_agree_Some with "Hinterp_global Hinstr") as %Hinstr_lk.
+    (* Hstep gives that a reload/terminating event is happening *)
+    inversion_step Hstep.
+    2:{ (* not terminating *) rewrite Hreg in H4. inversion H4. subst val. rewrite Hinstr_lk // in H5. }
+    rewrite Hreg in H5. inversion H5. subst val. rewrite Hinstr_lk in H6. inversion H6.
+
+    iModIntro. iSplitL "Hinterp_local";last done.
+    { iNamed "Hinterp_local". iSplitL "Hinterp_local_lws".
+      iApply (last_write_interp_progress_non_write' with "Hinterp_local_lws");auto.
+      iApply (po_pred_interp_skip' with "Hinterp_po_src");auto.
+    }
+  Qed.
+
+  Lemma terminate `{!UserProt} {tid : Tid} {ts val}:
+    ThreadState.ts_reqs ts = EmptyInterp ->
+    ts.(ts_regs) !! RNPC = Some (val : RegVal) ->
+    (val.(reg_val)) ↦ᵢ - -∗
+    SSWP (LThreadState.LTSNormal ts) @ tid {{ λ lts',
+      (* update lts' accordingly *)
+      ⌜lts' = LThreadState.LTSDone ts ⌝
+    }}.
+  Proof.
+    iIntros (Hreqs Hreg) "Hinstr".
+    rewrite sswp_eq /sswp_def /=.
+    iIntros (????) "H". iNamed "H".
+    inversion Hat_prog as [Hpg]. clear Hat_prog.
+    case_bool_decide as Hv.
+    {
+      rewrite (LThreadStep.step_progress_valid_is_reqs_nonempty _ _ _ ts) in Hv;[|done|done].
+      done.
+    }
+
+    iDestruct (instr_agree_None with "Hinterp_global Hinstr") as %Hinstr_lk.
+
+    (* Hstep gives that a reload/terminating event is happening *)
+    inversion_step Hstep.
+    { (* not reload *) rewrite Hreg in H5. inversion H5. subst val. rewrite Hinstr_lk // in H6. }
+
+    iModIntro. iSplitL "Hinterp_local";last done. iFrame.
+  Qed.
+
+End rules.

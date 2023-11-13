@@ -1,0 +1,23 @@
+(coq.theory
+ (name SSCCommon)
+ (package coq-system-semantics)
+ (modules
+   Common
+   CBase
+   CList
+   CBool
+   CBitvector
+   CInduction
+   CMaps
+   CSets
+   GRel
+   Exec)
+ (theories
+   Ltac2
+   stdpp
+   RecordUpdate
+   Hammer.Tactics
+   bbv
+   Sail
+ )
+)
