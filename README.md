@@ -49,8 +49,11 @@ low-level proof rules, and the adequacy theorem.
   and their soundness proofs.
 
 - `examples`: This directory contains the examples.
-  - `examples/lb/` includes three variants of load-buffering and their proofs.
+  - `examples/lb/` includes four variants of load-buffering and their proofs.
   - `examples/mp/` contains four variants of message-passing and their proofs.
+  - `examples/isa2/` contains a variant of ISA2 and its proofs.
+  - `examples/co/` contains two coherence examples and their proofs.
+  - `examples/try_lock/` contains an implementation of try lock using exclusives, a mutual exclusion example using the lock, and their proofs.
 
 The `system-semantics` directory contains the Coq infrastructure used to define and reason about 
 memory models, including:
