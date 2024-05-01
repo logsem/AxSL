@@ -1,4 +1,4 @@
-This repositary contains the artifact of POPL 2024 paper 
+This repository contains the artifact of POPL 2024 paper 
 "An axiomatic basis for computer programming on the relaxed Arm-A architecture: the AxSL Logic".
 
 ## About the Artifact
