@@ -34,76 +34,99 @@
 (*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
 (*                                                                                  *)
 
-From self.low.rules Require Import prelude.
+From iris.bi Require Import derived_laws.
 
-Import uPred.
+From self.lang Require Import mm opsem.
+From self.algebra Require Export base.
+From self.low Require Export edge event.
 
-Section rules.
-  Context `{AAIrisG} `{Htg: !ThreadGNL}.
-  Import ThreadState.
-  Lemma branch_announce {tid : Tid} {ts ctxt addr dep}:
-    ThreadState.ts_reqs ts = AAInter.Next (AAInter.BranchAnnounce addr dep) ctxt ->
-    ⊢
-    SSWP (LThreadState.LTSNormal ts) @ tid {{ λ lts',
-      ⌜lts' = LThreadState.LTSNormal ((incr_cntr ts)
-        <| ts_ctrl_srcs := LThreadStep.deps_of_depon tid ts dep ∪ (ThreadState.ts_ctrl_srcs ts) |>
-        <| ts_reqs := ctxt tt |> ) ⌝
-    }}.
+Section def.
+  Context `{CMRA Σ} `{!AABaseG}.
+
+  (** Graph *)
+  Import AACandExec.
+
+  Definition global_interp (gs : GlobalState.t) :=
+    (* agree RA for the graph, we simply put it in every graph assertion *)
+    ("Hgr_ag" ∷ graph_agree gs.(GlobalState.gs_graph) ∗
+    (* agree RA for the instruction table, similar as above *)
+    "Hinstr_ag" ∷ instr_table_agree gs.(GlobalState.gs_gimem))%I.
+
+End def.
+
+Lemma graph_agree_alloc `{CMRA Σ} `{!AABaseInG} gr:
+  ⊢ |==> ∃ GN, own GN ((to_agree gr) : (agreeR (leibnizO Graph.t))).
+Proof.
+  iDestruct (own_alloc (to_agree gr)) as ">[% ?]". done.
+  iModIntro. iExists _. iFrame.
+Qed.
+
+Lemma instr_table_agree_alloc `{CMRA Σ} `{!AABaseInG} gi:
+  ⊢ |==> ∃ GN, own GN (to_agree (gi: gmapO Addr (leibnizO Instruction))).
+Proof.
+  iDestruct (own_alloc (to_agree gi)) as ">[% ?]". done.
+  iModIntro. iExists _. iFrame.
+Qed.
+
+Section lemma.
+  Context `{CMRA Σ}.
+  Context `{!AABaseG}.
+
+  Lemma instr_agree_Some gs a i:
+    global_interp gs -∗
+    a ↦ᵢ i -∗
+    ⌜gs.(GlobalState.gs_gimem) !! a = Some i⌝.
   Proof.
-    iIntros (Hreqs).
-    rewrite sswp_eq /sswp_def /=.
-    iIntros (????) "H". iNamed "H".
-    inversion Hat_prog as [Hpg]. clear Hat_prog.
-    case_bool_decide as Hv.
-    2: {
-      rewrite (LThreadStep.step_progress_valid_is_reqs_nonempty _ _ _ ts) in Hv; [|done|done].
-      rewrite Hreqs /EmptyInterp /= in Hv. exfalso. apply Hv. congruence.
-    }
-    iIntros (?). iNamed 1.
-
-    inversion_step Hstep.
-
-    iNamed "Hinterp_annot". iDestruct "Hannot_at_prog" as "#Hannot_at_prog".
-    iMod (annot_alloc na (get_progress ts) tid gs emp%I with "[$Hinterp_annot $Hannot_at_prog //]") as "(Hinterp_annot & _)".
-    iMod (token_alloc with "[$Hinterp_token $Hannot_at_prog //]") as "(Hinterp_token & _)".
-
-    iExists emp%I, ∅, ∅, ls.
-    iModIntro. iSplitR. { iApply empty_na_splitting_wf. }
-    iSplitR.
-    (** getting out resources from FE *)
-    {
-      rewrite flow_eq_dyn_unseal /flow_eq_dyn_def.
-      iIntros (??). repeat iNamed 1.
-
-      pose proof (prot_inv_unchanged _ σ s_ob eid Hgraph_wf) as Hprot_inv.
-      iDestruct "Hob_pred_sub" as %Hob_pred_sub.
-      iDestruct "Hob_pred_nin" as %Hob_pred_nin.
-      ospecialize* Hprot_inv.
-      { set_solver + Hv. }
-      { set_solver + Hob_pred_nin. }
-      { set_solver + Hob_pred_sub. }
-      rewrite Hgr_lk /= in Hprot_inv.
-
-      iDestruct (Hprot_inv with "Hob_st") as ">Hob_st".
-
-      iApply step_fupd_intro;first set_solver +.
-      iNext. iExists σ.
-      iFrame.
-    }
-
-    iSplitL "Hinterp_annot Hinterp_token".
-    { rewrite -map_union_assoc map_empty_union insert_union_singleton_l.
-      iFrame. rewrite dom_union_L dom_singleton_L. by iFrame. }
-    
-    iSplitL; last (clear;done).
-    iNamed "Hinterp_local". iSplitL "Hinterp_local_lws".
-    {
-      iApply (last_write_interp_progress_non_write with "Hinterp_local_lws");first reflexivity.
-      intro Hin. erewrite progress_to_node_mk_eid_ii in Hin;last reflexivity.
-      pose proof (AAConsistent.event_is_write_elem_of_mem_writes2 _ Hgraph_wf Hin) as [? [Hlk' HW]].
-      rewrite Hgr_lk in Hlk'. inversion Hlk'. subst x. done.
-    }
-    iApply (po_pred_interp_skip with "Hinterp_po_src");reflexivity.
+    iIntros "[_ Hinstr] Hi". rewrite instr_eq /instr_def.
+    iDestruct "Hi" as "[% [Hag %Hlk]]".
+    iDestruct (instr_table_agree_agree with "Hinstr Hag") as %->.
+    done.
   Qed.
 
-End rules.
+  Lemma instr_agree_None gs a:
+    global_interp gs -∗
+    a ↦ᵢ - -∗
+    ⌜gs.(GlobalState.gs_gimem) !! a = None⌝.
+  Proof.
+    iIntros "[_ Hinstr] Hi". rewrite instr_eq /instr_def.
+    iDestruct "Hi" as "[% [Hag %Hlk]]".
+    iDestruct (instr_table_agree_agree with "Hinstr Hag") as %->.
+    done.
+  Qed.
+
+  Lemma graph_edge_agree gs e1 e2 E:
+    global_interp gs -∗
+    e1 -{ E }> e2 -∗
+    ⌜Edge.ef_edge_interp gs.(GlobalState.gs_graph) E e1 e2 ⌝.
+  Proof.
+    iIntros "[Hgr _] He". rewrite edge_eq /edge_def.
+    iNamed "He". iDestruct (graph_agree_agree with "Hgr Hgr_interp_e") as %->.
+    done.
+  Qed.
+
+  Lemma graph_event_agree gs e E:
+    global_interp gs -∗
+    e -{E}> E -∗
+    ⌜ Event.event_interp gs.(GlobalState.gs_graph) E e⌝.
+  Proof.
+    iIntros "[Hgr _] He". rewrite event_eq /event_def.
+    iNamed "He". iDestruct (graph_agree_agree with "Hgr Hgr_interp_e") as %->.
+    done.
+  Qed.
+
+  Lemma graph_edge_agree_big_pred gs s e E:
+    global_interp gs -∗
+    ([∗ set] e1 ∈ s, e1 -{ E }> e) -∗
+    [∗ set] e1 ∈ s, ⌜Edge.ef_edge_interp gs.(GlobalState.gs_graph) E e1 e⌝.
+  Proof.
+    iInduction s as [|??] "IH" using set_ind_L.
+    iIntros. rewrite big_sepS_empty //.
+    iIntros "Hgr Hs".
+    rewrite !big_sepS_union; try set_solver.
+    iDestruct "Hs" as "[He Hs]".
+    rewrite !big_sepS_singleton.
+    iDestruct (graph_edge_agree with "Hgr He") as %?.
+    iSplit. done. iApply ("IH" with "Hgr Hs").
+  Qed.
+
+End lemma.

@@ -34,13 +34,13 @@
 (*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
 (*                                                                                  *)
 
-From stdpp.unstable Require Import bitvector bitvector_tactics.
+From stdpp.bitvector Require Import definitions tactics.
 
 From iris.proofmode Require Import tactics.
 
 From self.low Require Import instantiation.
 From self.low.lib Require Import edge event.
-From self.middle Require Import rules specialised_rules.
+From self.mid Require Import rules specialised_rules.
 Require Import ISASem.SailArmInstTypes.
 
 Import uPred.
@@ -58,11 +58,6 @@ Section Proof.
     (BV 64 0x1000) ↦ᵢ (write addr data) ∗
     (BV 64 0x1004) ↦ᵢ (write addr data') ∗
     (BV 64 0x1008) ↦ᵢ -.
-
-  Definition protocol : UserProt :=
-    Build_UserProt _ _ (λ a v e, True)%I.
-
-  #[local] Instance userprot : UserProt := protocol.
 
   Lemma loc_of_writes {gr ks kv ks' kv' a v v'} eid eid' :
    Event.event_interp gr (Event.W ks kv a v) eid ->
@@ -163,6 +158,7 @@ Section Proof.
     None -{LPo}> -∗
     ctrl -{Ctrl}> -∗
     last_local_write 1 addr None -∗
+    Prot[ addr | (λ _ _, True%I) ] -∗
     instrs -∗
     WPi (LTSI.Normal,  (BV 64 0x1000)) @ 1 {{ λ lts', ⌜lts' = (LTSI.Done, (BV 64 0x1008))⌝ ∗
                                                       ∃ eid eid',
@@ -170,17 +166,19 @@ Section Proof.
                                                         eid' -{E}> Event.W AS_normal AV_plain addr data' ∗
                                                         eid -{Edge.Co}> eid'}}.
   Proof.
-    iIntros "Hpo_src Hctrl_src Hlast_write Hinstrs".
+    iIntros "Hpo_src Hctrl_src Hlast_write Hprot Hinstrs".
     iDestruct "Hinstrs" as "(#? & #? & #?)".
+    iDestruct "Hprot" as "[Hprot1 Hprot2]".
 
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src Hctrl_src Hlast_write]").
+    iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src Hctrl_src Hlast_write Hprot1]").
     {
       iApply (istore_pln (λ _, emp)%I ∅ ∅ with "[$Hpo_src $Hctrl_src $Hlast_write]").
       { iFrame "#". by rewrite big_sepS_empty big_sepM_empty. }
 
+      iExists _,_,emp%I. iSplitL. iIntros "_";iFrame.
       iIntros (?). iSplitL.
       - by iIntros "_ _ _".
-      - iIntros "#HE %Htid #Hpo _". by iModIntro.
+      - iIntros "#HE %Htid #Hpo _ _". by iModIntro.
     }
       
     iIntros (?) "(-> & %eid1 & #Heid1 & %Htid1 & Hpo_src & _ & Hlast_write & Hctrl_src & _)".
@@ -189,14 +187,15 @@ Section Proof.
 
     iDestruct (lpo_to_po with "Hpo_src") as "[Hpo_src #Hpo]".
 
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src Hctrl_src Hlast_write Hpo]").
+    iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src Hctrl_src Hlast_write Hpo Hprot2]").
     {
       iApply (istore_pln (λ _, emp)%I {[eid1]} ∅ with "[$Hpo_src $Hctrl_src $Hlast_write]").
       { iFrame "#". rewrite big_sepS_singleton big_sepM_empty. by iFrame "#". }
 
+      iExists _,_,emp%I. iSplitL. iIntros "_";iFrame.
       iIntros (?). iSplitL.
-      + by iIntros "_ _ _".
-      + iIntros "#HE %Htid #Hpo' _". by iModIntro.
+      - by iIntros "_ _ _".
+      - iIntros "#HE %Htid #Hpo' _ _". by iModIntro.
     }
 
     iIntros (?) "{Hpo} (-> & %eid2 & #Heid2 & %Htid2 & Hpo_src & #Hpo & Hlast_write & Hctrl_src & _)".

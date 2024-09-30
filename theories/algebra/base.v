@@ -41,38 +41,48 @@ From iris.algebra Require Export agree gmap gset csum lib.dfrac_agree.
 From iris.base_logic.lib Require Export ghost_map saved_prop.
 From iris.proofmode Require Export tactics.
 From iris_named_props Require Export named_props.
+From iris.base_logic.lib Require Export iprop.
+From iris.bi.lib Require Import fractional.
 
-From self Require Export cmra.
-From self.lang Require Export mm instrs.
+(* need physical states from these files *)
+From self.lang Require Import mm instrs.
 From self.algebra Require Export ghost_map_ag mono_pg.
+From self.algebra.lib Require Export saved_prot.
+
+(* Make Coq aware of Σ with type class search *)
+Class CMRA `{Σ: !gFunctors} := {}.
 
 Class AABaseInG `{CMRA Σ} := {
-  AAInGBaseEdge :> inG Σ (agreeR (leibnizO Graph.t));
+  AAInGBaseEdge :: inG Σ (agreeR (leibnizO Graph.t));
   (* node_annotation *)
-  AAInGNodeAnnot :> ghost_map_agG Σ Eid gname;
-  AAInGNodeAnnotGnames :> inG Σ (authR (gset_disjUR gname));
-  AAInGSavedProp :> savedPropG Σ;
-  AAInGInstrMem :> inG Σ (agreeR (gmapO Addr (leibnizO Instruction)));
-  AAInGLocalWriteMap :> ghost_mapG Σ Addr (option Eid);
-  AAInGPoSrcMono :> inG Σ (mono_pgR);
-  AAInGPoSrcOneShot :> inG Σ (csumR (dfrac_agreeR unitO) (agreeR (prodO gnameO natO)));
-  AAInGRmwSrc :> inG Σ (authR (gset_disjUR Eid));
+  AAInGNodeAnnot :: ghost_map_agG Σ Eid gname;
+  AAInGNodeAnnotGnames :: inG Σ (authR (gset_disjUR gname));
+  AAInGSavedProp :: savedPropG Σ;
+  AAInGInstrMem :: inG Σ (agreeR (gmapO Addr (leibnizO Instruction)));
+  AAInGLocalWriteMap :: ghost_mapG Σ Addr (option Eid);
+  AAInGPoSrcMono :: inG Σ (mono_pgR);
+  AAInGPoSrcOneShot :: inG Σ (csumR (dfrac_agreeR unitO) (agreeR (prodO gnameO natO)));
+  AAInGRmwSrc :: inG Σ (authR (gset_disjUR Eid));
+  AAInGProtGNMap :: ghost_mapG Σ Addr gname;
+  AAInGProtPred :: savedProtG Σ Val Eid;
 }.
 
 Section genAABaseG.
   Class AABaseG `{CMRA Σ} :=
     GenAABaseG{
-        AAIn :> AABaseInG;
+        AAIn :: AABaseInG;
         AAGraphN : gname;
         AANodeAnnotN: gname;
         AAInstrN : gname;
         AARmwTokenN : gname;
+        AAProtN : gname;
       }.
 
   #[global] Arguments AAGraphN {Σ _ _}.
   #[global] Arguments AANodeAnnotN {Σ _ _}.
   #[global] Arguments AAInstrN {Σ _ _}.
   #[global] Arguments AARmwTokenN {Σ _ _}.
+  #[global] Arguments AAProtN {Σ _ _}.
 
   Definition AABaseΣ : gFunctors :=
     #[ GFunctor (agreeR (leibnizO Graph.t));
@@ -83,7 +93,9 @@ Section genAABaseG.
        ghost_mapΣ Addr (option Eid);
        GFunctor mono_pgR;
        GFunctor (csumR (dfrac_agreeR unitO) (agreeR (prodO gnameO natO)));
-       GFunctor (authR (gset_disjUR Eid))
+       GFunctor (authR (gset_disjUR Eid));
+       ghost_mapΣ Addr gname;
+       savedProtΣ Val Eid
       ].
 
   #[global] Instance subG_AABasepreG `{CMRA Σ}: subG AABaseΣ Σ -> AABaseInG.
@@ -149,4 +161,143 @@ Section definition.
     rewrite to_agree_op_valid_L in Hvalid. done.
   Qed.
 
+  (** protocol *)
+  Definition prot_loc_gn_def (addr: Addr) (q: Qp) (N: gname) :=
+    ghost_map_elem AAProtN addr (DfracOwn q) N.
+
+  Definition prot_loc_gn_aux : seal (@prot_loc_gn_def). Proof. by eexists. Qed.
+  Definition prot_loc_gn := prot_loc_gn_aux.(unseal).
+  Definition prot_loc_gn_eq : @prot_loc_gn = @prot_loc_gn_def := prot_loc_gn_aux.(seal_eq).
+
+  Lemma prot_loc_gn_combine l q1 q2 N1 N2:
+    prot_loc_gn l q1 N1 -∗ prot_loc_gn l q2 N2 -∗ prot_loc_gn l (q1 + q2) N1.
+  Proof.
+    iIntros "H1 H2". rewrite prot_loc_gn_eq /prot_loc_gn_def.
+    by iCombine "H1 H2" as "$".
+  Qed.
+
+  Lemma prot_loc_gn_split l q1 q2 N:
+    prot_loc_gn l (q1 + q2) N -∗ prot_loc_gn l q1 N ∗ prot_loc_gn l q2 N.
+  Proof.
+    iIntros "H". rewrite prot_loc_gn_eq /prot_loc_gn_def.
+    iDestruct "H" as "[H1 H2]".
+    iFrame.
+  Qed.
+
+  Lemma prot_loc_gn_both_agree l q N m:
+    prot_loc_gn l q N -∗ ghost_map_auth AAProtN 1 m -∗ ⌜m !! l = Some N⌝.
+  Proof.
+    iIntros "He Hauth". rewrite prot_loc_gn_eq /prot_loc_gn_def.
+    iApply (ghost_map.ghost_map_lookup with "Hauth He").
+  Qed.
+
+  Lemma prot_loc_gn_both_update l N N' m:
+    prot_loc_gn l 1 N -∗ ghost_map_auth AAProtN 1 m ==∗
+    ghost_map_auth AAProtN 1 (<[ l := N' ]>m) ∗ prot_loc_gn l 1 N'.
+  Proof.
+    iIntros "He Hauth". rewrite prot_loc_gn_eq /prot_loc_gn_def.
+    by iDestruct (ghost_map.ghost_map_update with "Hauth He") as ">[$ $]".
+  Qed.
+
 End definition.
+
+Definition instr_def `{CMRA Σ} `{!AABaseG} (a : Addr) (oi : option Instruction) : iProp Σ :=
+  ∃ gi, instr_table_agree gi ∗ ⌜gi !! a = oi⌝.
+Definition instr_aux : seal (@instr_def). Proof. by eexists. Qed.
+Definition instr := instr_aux.(unseal).
+Arguments instr {Σ _ _}.
+Definition instr_eq : @instr = @instr_def := instr_aux.(seal_eq).
+Notation "a ↦ᵢ i" := (instr a (Some i)) (at level 20) : bi_scope.
+Notation "a ↦ᵢ -" := (instr a None) (at level 20) : bi_scope.
+
+Definition annot_own_def `{CMRA Σ} `{!AABaseG} eid (P : iProp Σ) :iProp Σ :=
+  ∃ n n', ghost_map_ag_elem AANodeAnnotN eid n ∗ own n (◯ (GSet {[n']})) ∗
+          saved_prop_own n' (DfracOwn (1/2)) P.
+Definition annot_own_aux : seal(@annot_own_def). Proof. by eexists. Qed.
+Definition annot_own := annot_own_aux.(unseal).
+Arguments annot_own {Σ _ _}.
+Definition annot_own_eq : @annot_own = @annot_own_def := annot_own_aux.(seal_eq).
+Notation "n ↦ₐ P" := (annot_own n P) (at level 20) : bi_scope.
+
+Definition rmw_token_def `{CMRA Σ} `{!AABaseG} (e : Eid) :=
+  own AARmwTokenN (◯ (GSet {[e]})).
+Definition rmw_token_aux : seal(@rmw_token_def). Proof. by eexists. Qed.
+Definition rmw_token := rmw_token_aux.(unseal).
+Arguments rmw_token {Σ _ _}.
+Definition rmw_token_eq : @rmw_token = @rmw_token_def := rmw_token_aux.(seal_eq).
+Notation "Tok{ n }" := (rmw_token n) (at level 20,
+                         format "'Tok{' n  '}'") : bi_scope.
+
+Definition prot_loc_def `{CMRA Σ} `{!AABaseG} (l: Addr) (q: Qp) (prot: Val -> Eid -> iProp Σ) : iProp Σ:=
+  ∃ gn, prot_loc_gn l q gn ∗ saved_prot_own gn prot.
+Definition prot_loc_aux : seal(@prot_loc_def). Proof. by eexists. Qed.
+Definition prot_loc := prot_loc_aux.(unseal).
+Arguments prot_loc {Σ _ _}.
+Definition prot_loc_eq : @prot_loc = @prot_loc_def := prot_loc_aux.(seal_eq).
+Notation "'Prot[' x , q | Φ ]" := (prot_loc x q Φ) (at level 20,
+                         format "'Prot['  x  ,  q  |  Φ  ]") : bi_scope.
+Notation "'Prot[' x | Φ ]" := (prot_loc x 1 Φ) (at level 20,
+                         format "'Prot['  x  |   Φ  ]") : bi_scope.
+
+Section lemma.
+  Context `{CMRA Σ} `{!AABaseG}.
+  #[global] Instance instr_persis a i: Persistent (a ↦ᵢ i).
+  Proof.
+    rewrite instr_eq /instr_def. apply _.
+  Qed.
+
+  #[global] Instance instr_persis' a: Persistent (a ↦ᵢ -).
+  Proof.
+    rewrite instr_eq /instr_def. apply _.
+  Qed.
+
+  Lemma token_excl a b:
+    Tok{a} -∗ Tok{b} -∗ ⌜a ≠ b⌝.
+  Proof.
+    rewrite rmw_token_eq /rmw_token_def.
+    iIntros "H1 H2".
+    iDestruct (own_valid_2 with "H1 H2") as %Hvalid.
+    iPureIntro. rewrite auth_frag_op_valid in Hvalid.
+    rewrite gset_disj_valid_op in Hvalid.
+    set_solver + Hvalid.
+  Qed.
+
+  Lemma prot_loc_combine x q1 q2 Φ1 Φ2 :
+    Prot[ x, q1 | Φ1 ] -∗ Prot[ x, q2 | Φ2 ] -∗
+    Prot[ x, (q1+q2)%Qp | Φ1 ].
+  Proof.
+    rewrite prot_loc_eq /prot_loc_def.
+    iIntros "[% [Hgn1 Hsp1]] [% [Hgn2 Hsp2]]".
+    iDestruct (prot_loc_gn_combine with "Hgn1 Hgn2") as "Hgn".
+    by iFrame.
+  Qed.
+
+  Global Instance prot_loc_combine_as l q1 q2 Φ1 Φ2:
+    CombineSepAs (Prot[ l, q1 | Φ1 ]) (Prot[ l, q2 | Φ2 ]) (Prot[ l , (q1 + q2) | Φ1 ]) | 60.
+  Proof.
+    rewrite /CombineSepAs. iIntros "[H1 H2]".
+    iDestruct (prot_loc_combine with "H1 H2") as "$".
+  Qed.
+
+  Global Instance prot_loc_fractional l Φ :
+    Fractional (λ q, Prot[ l, q | Φ ])%I.
+  Proof.
+    iIntros (??). iSplit.
+    {
+      rewrite prot_loc_eq /prot_loc_def.
+      iIntros "[% [Hgn #Hsp]]". iFrame "#".
+      iDestruct (prot_loc_gn_split with "Hgn") as "[$ $]".
+    }
+    iIntros "[H1 H2]".
+    iApply (prot_loc_combine with "H1 H2").
+  Qed.
+
+
+  Global Instance prot_loc_as_fractional l q Φ :
+    AsFractional (Prot[ l, q | Φ ]) (λ q, Prot[ l, q | Φ ])%I q.
+  Proof.
+      split. reflexivity.
+      apply _.
+  Qed.
+
+End lemma.

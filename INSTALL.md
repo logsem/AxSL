@@ -1,23 +1,22 @@
-# Building from scratch
-
 ## Compiling the development with Docker
 
 We recommend compiling the development using Docker. To do this,
 
 1. Make sure you have [Docker](https://docs.docker.com/get-docker/) installed.
-2. Run `docker build -t="axsl:popl" .` in the source code directory (which contains a `Dockerfile`) 
-to build the Docker image.
+2. Run `docker build -t="axsl:popl" .` to build the Docker image.
 
 The building process may take up to one hour, including installing dependencies and compilation. 
 
-Optionally, you can follow this by executing `docker run -i -t axsl:popl` to start a container with
-the freshly built image and access an interactive shell inside it.
+Optionally, you can follow this by executing `docker run -i -t axsl:popl` to start a container with the freshly built image and access
+an interactive shell inside it.
 
 ### Troubleshooting
 
 In order to build the development, you might have to increase the amount of
-memory allocated to a running Docker container. For instructions, see
+memory allocated to a running Docker container. For
+instructions, see
 [here](https://stackoverflow.com/questions/44533319/how-to-assign-more-memory-to-docker-container).
+
 
 ## Manually Installing with opam
 
@@ -42,9 +41,9 @@ opam install dune
 
 ### Coq
 
-Install Coq `8.16.1`
+Install Coq `8.18.0`
 ```
-opam pin coq 8.16.1
+opam pin coq 8.18.0
 ```
 
 ### Coq libraries
@@ -56,14 +55,15 @@ You need to add the iris opam repository to install Iris and stdpp :
 opam repo add iris-dev https://gitlab.mpi-sws.org/iris/opam.git
 ```
 
-This development uses a development version of Iris and stdpp:
+This development uses Iris 4.2.0:
 ```
-opam install coq-iris.dev.2023-08-11.1.81f394da -y
+opam install coq-iris.4.2.0 -y
 ```
 
-This development uses an unstable extension of `stdpp`: 
+This development uses `stdpp` and `stdpp-bitvector` 1.10.0: 
 ```
-opam install coq-stdpp-unstable.dev.2023-08-03.3.4be5fd62 -y
+opam install coq-stdpp.1.10.0 -y
+opam install coq-stdpp-bitvector.1.10.0 -y
 ```
 
 #### iris-named-props

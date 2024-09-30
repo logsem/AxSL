@@ -1,0 +1,5 @@
+; Add project-wide flags here.
+(env
+ (dev
+  (binaries (coqc-timing.sh as coqc))
+  (flags :standard)))

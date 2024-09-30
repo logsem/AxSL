@@ -34,12 +34,12 @@
 (*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
 (*                                                                                  *)
 
-From stdpp.unstable Require Import bitvector bitvector_tactics.
+From stdpp.bitvector Require Import definitions tactics.
 
 From iris.proofmode Require Import tactics.
 
 From self.low Require Export instantiation.
-From self.middle Require Import rules specialised_rules.
+From self.mid Require Import rules specialised_rules.
 Require Import ISASem.SailArmInstTypes.
 
 Import uPred.
@@ -69,7 +69,7 @@ Section proof.
   Definition data_prot (v : Val) (e : Eid) : iProp Σ :=
     (⌜v= (BV 64 42)⌝ ∗ ⌜EID.tid e = tid1⌝) ∨ ⌜EID.tid e = 0%nat⌝.
 
-  Definition flag_prot (e : Eid) : iProp Σ :=
+  Definition flag_prot (v : Val) (e : Eid) : iProp Σ :=
     ⌜EID.tid e = 0%nat⌝
     ∨ ∃ d,
         ⌜EID.tid e = tid1 ⌝ ∗ ⌜EID.tid d = tid1⌝ ∗
@@ -90,42 +90,38 @@ Section proof.
     (BV 64 0x2010) ↦ᵢ - ∗
     (BV 64 0x3000) ↦ᵢ -.
 
-  Definition protocol : UserProt :=
-    Build_UserProt _ _(λ a v e,
-                         if bool_decide (a = data) then data_prot v e
-                         else if bool_decide (a = flag) then flag_prot e
-                              else (⌜EID.tid e = 0%nat⌝)%I
-      ).
-
-  #[local] Instance userprot : UserProt := protocol.
-
   Context `{!AAThreadG} `{ThreadGN}.
 
-  (* Note this is the same proof as in rel_acq *)
+  (* NOTE this is the same proof as in rel_acq *)
   Lemma send ctrl:
     None -{LPo}> -∗
     ctrl -{Ctrl}> -∗
     last_local_write tid1 data None -∗
     last_local_write tid1 flag None -∗
+    Prot[ data, (1/2)%Qp | data_prot ] -∗
+    Prot[ flag, (1/2)%Qp | flag_prot ] -∗
     send_instrs -∗
     WPi (LTSI.Normal, (BV 64 0x1000)) @ tid1 {{ λ lts', ⌜lts' = (LTSI.Done, (BV 64 0x1008))⌝}}.
   Proof.
-    iIntros "Hpo_src Hctrl_src Hlocalw_data Hlocalw_flag Hinstrs".
+    iIntros "Hpo_src Hctrl_src Hlocalw_data Hlocalw_flag Hprot_data Hprot_flag Hinstrs".
     iDestruct "Hinstrs" as "(#? & #? & #?)".
 
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src Hctrl_src Hlocalw_data]").
+    iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src Hctrl_src Hlocalw_data Hprot_data]").
     {
       iApply (istore_pln (λ _, emp)%I ∅ ∅ with "[$Hpo_src $Hctrl_src $Hlocalw_data]"). iFrame "#∗".
       rewrite big_sepS_empty big_sepM_empty //.
 
+      iExists _,_,emp%I.
+      iSplitL. iIntros "_". iFrame.
+
       iIntros (?). iSplitL.
       - iIntros "_ _ _". done.
-      - iIntros "#HE % #Hpo _". iModIntro. iSplit;first done. simpl. rewrite /data_prot. iLeft;done.
+      - iIntros "#HE % #Hpo _ Hp". iModIntro. iSplit;first done. simpl. rewrite /data_prot. iLeft;done.
     }
     iIntros (?) "(-> &[% (#Hwrite&%Htid1&Hpo&_&Hlocal&Hctrl&HeidP)])".
     assert (G: ((BV 64 4096) `+Z` 4 = (BV 64 4100))%bv) by bv_solve. rewrite G.
 
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hlocalw_flag Hwrite Hpo Hctrl HeidP]").
+    iApply sswpi_wpi. iApply (sswpi_mono with "[Hlocalw_flag Hprot_flag Hwrite Hpo Hctrl HeidP]").
     {
       iDestruct (lpo_to_po with "Hpo") as "[Hlpo #Hpo]".
       iApply (istore_rel emp {[eid := emp%I]}). iFrame "#∗".
@@ -133,9 +129,11 @@ Section proof.
       iSplit;first rewrite big_sepM_singleton //.
       iSplitL;first rewrite big_sepM_singleton //.
 
-      iIntros (eid') "#Hwrite' %Htid2 #Hpo' HeidP'".
-      iModIntro. iSplit;first done. iModIntro.
-      iRight. iExists eid.  rewrite big_sepM_singleton. by iFrame "#".
+      iExists _. iSplitR. rewrite big_sepM_singleton. iIntros "H";iExact "H".
+
+      iIntros (eid') "#Hwrite' %Htid2 #Hpo' HeidP' _".
+      iModIntro. iSplit;first done.
+      iRight. iExists eid. rewrite big_sepM_singleton. by iFrame "#".
     }
     iIntros (?) "(-> &[% (?&?&?)])".
     clear G. assert (G: ((BV 64 4100) `+Z` 4 = (BV 64 4104))%bv); [bv_solve|]. rewrite G.
@@ -151,6 +149,8 @@ Section proof.
     None -{Rmw}> -∗
     last_local_write tid2 data None -∗
     last_local_write tid2 flag None -∗
+    Prot[ data, (1/2)%Qp | data_prot ] -∗
+    Prot[ flag, (1/2)%Qp | flag_prot ] -∗
     (∃ rv, "r1" ↦ᵣ rv) -∗
     (∃ rv, "r2" ↦ᵣ rv) -∗
     receive_instrs -∗
@@ -161,16 +161,17 @@ Section proof.
          ⌜lts' = (LTSI.Done, (BV 64 0x3000))⌝)
     }}.
   Proof.
-    iIntros "Hlpo Hctrl Hrmw Hllwd Hllwf [% Hr1] [% Hr2] Hinstrs".
+    iIntros "Hlpo Hctrl Hrmw Hllwd Hllwf Hprot_d Hprot_f [% Hr1] [% Hr2] Hinstrs".
     iDestruct "Hinstrs" as "(#? & #? & #? & #? & #? & #?)".
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hr1 Hlpo Hctrl Hrmw Hllwf]").
+    iApply sswpi_wpi. iApply (sswpi_mono with "[Hr1 Hlpo Hctrl Hrmw Hllwf Hprot_f]").
     {
       iApply (iload_pln _ ∅ ∅ with "[$Hr1 $Hlpo $Hctrl $Hrmw $Hllwf]"). iFrame "∗#".
       rewrite big_sepM_empty big_sepS_empty //.
 
       iIntros (?). iSplitR.
       - iIntros "_ _". rewrite big_sepM_empty //.
-      - iIntros (??) "_ _ _ _ _ _ #Hprot". iModIntro. iExact "Hprot".
+      - iExists _,_,emp%I. iSplitL. iIntros "_";iFrame.
+        iIntros (??) "_ _ _ _ _ _ _ #Hprot". iModIntro. iFrame "Hprot". iExact "Hprot".
     }
     iIntros (?) "(-> & %eid_fr & %eid_fw & % & #Hfread & %Hfread_tid & Hr1 & Hannot & (% & % & #Hfwrite) & #Hrf & Hlpo & _ & Hctrl & Hrmw & _)".
     assert (G: ((BV 64 8192) `+Z` 4 = (BV 64 8196))%bv); [bv_solve|]. rewrite G.
@@ -183,8 +184,7 @@ Section proof.
       + set_solver.
       + unfold eval_ae_val.
         rewrite lookup_insert.
-        simpl.
-        reflexivity.
+        simpl. reflexivity.
       + by rewrite big_sepM_singleton.
     }
     iIntros (?).
@@ -222,17 +222,18 @@ Section proof.
     iDestruct (event_node with "Hisb") as "?".
     iApply sswpi_wpi. iApply (sswpi_mono with "[-Hr1]").
     {
-      iApply (iload_pln (λ e v', ⌜v' = (BV 64 42)⌝)%I {[eid_isb]} {[eid_fr := prot flag v eid_fw]} with "[$Hr2 $Hlpo $Hctrl $Hrmw $Hllwd Hannot]").
+      iApply (iload_pln (λ e v', ⌜v' = (BV 64 42)⌝)%I {[eid_isb]} {[eid_fr := flag_prot v eid_fw]} with "[$Hr2 $Hlpo $Hctrl $Hrmw $Hllwd Hannot]").
       + iFrame "#∗". iSplitR. { by rewrite big_sepS_singleton. }
         by rewrite big_sepM_singleton.
       + iIntros (eid). iSplitR.
         - iIntros "#HN #HPo". rewrite big_sepM_singleton big_sepS_singleton.
           iApply (ctrl_isb_po_is_lob eid_fr eid_isb eid); iFrame "#".
-        - iIntros (eid_data_w v') "#Heid %Htid #HPo (% & % & #Hdata_write) #Hrf_data Hannot". 
-          rewrite big_sepM_singleton big_sepS_singleton.
+        - iExists _,_,_. iSplitL. rewrite big_sepM_singleton. iIntros "HH";iFrame. iExact "HH".
+          iIntros (eid_data_w v') "#Heid %Htid #HPo (% & % & #Hdata_write) #Hrf_data Hp Hannot".
+          rewrite big_sepS_singleton.
           iIntros "#Hdata". iModIntro.
-          rewrite /prot /= /data_prot /flag_prot.
-          iDestruct "Hdata" as "[(% & %)|%Hdata]"; [done|].
+          rewrite /data_prot /flag_prot.
+          iDestruct "Hdata" as "[(% & %)|%Hdata]". iSplit;[done|]. iLeft. done.
           iDestruct (write_of_read with "Hfread Hrf") as "(% & % & Hfw)".
           iDestruct "Hannot" as "[%Hannot|Hannot]".
           { iDestruct (initial_write_zero _ _ _ _ _ Hannot with "Hfw") as "%F". rewrite -F in Hf. contradict Hf. unfold Val, AAArch.val, AAval. bv_solve. }
@@ -267,8 +268,7 @@ Section proof.
     iIntros "% !>".
     iExists  {| reg_val := v; reg_dep := {[eid_fr]} |}, {| reg_val := v0; reg_dep := {[eid]} |}.
     iFrame.
-    iLeft.
-    iSplit;first done.
+    iLeft. iSplit;first done.
     by rewrite H4.
   Qed.
 

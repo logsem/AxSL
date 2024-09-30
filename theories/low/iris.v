@@ -34,22 +34,34 @@
 (*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
 (*                                                                                  *)
 
-(* This file contains the typeclass which is the parameter of the low-level logic,
-  the weakest precondition and adequacy can be instantiated by any instance of the typeclass*)
+(* This file contains the typeclasses which are the parameter of the low-level logic,
+  the weakest precondition and adequacy can be instantiated by any instance of the typeclasses *)
 From iris.base_logic.lib Require Export fancy_updates.
 
-From self Require Export cmra.
-From self.lang Require Export opsem.
-From self.low.lib Require Export annotations.
+From self.lang Require Import opsem.
+(* From self.low.lib Require Export annotations. *)
+From self.algebra Require Export base.
 Import uPred.
 
-Class irisG `{CMRA Σ} `{!invGS_gen HasNoLc Σ} := IrisG {
-  (* Interpretation of tied assertions *)
-  annot_interp : mea Σ -> iProp Σ;
-  (* Interpretation of global instruction memory and graph *)
-  gconst_interp : GlobalState.t -> iProp Σ;
-}.
+Notation mea Σ := (gmap Eid (iProp Σ)).
+Notation sra Σ := (gmap Eid (mea Σ)).
 
+Class irisG `{CMRA Σ} `{!invGS_gen HasNoLc Σ} := IrisG {
+  (* Interpretation for tied assertions *)
+  annot_interp : mea Σ -> iProp Σ;
+  (* Interpretation for global instruction memory and graph *)
+  gconst_interp : GlobalState.t -> iProp Σ;
+  (* Logical state updated in ob *)
+  ob_st : Type;
+  (* Interpretation for [ob_st] *)
+  (* NOTE: just handy to have access to graph in the implementation,
+     but not necessary, can use [graph_agree] RA to hide it*)
+  ob_st_interp : Graph.t -> ob_st -> gset Eid -> iProp Σ;
+  (* (* we can split the interpretation for [e] from overall interpretation if [e] is not ob-ordered with the rest *) *)
+  (* (* NOTE: used to establish FE for initial nodes in the adequacy proof *) *)
+  (* ob_st_interp_split: (∀ gr σ e s, e ∉ s -> Graph.ob_pred_of gr e ## s -> Graph.ob_succ_of gr e ## s -> *)
+  (*                                  ob_st_interp gr σ ({[e]} ∪ s) ⊣⊢ ob_st_interp gr σ {[e]} ∗ ob_st_interp gr σ s) *)
+}.
 
 Class irisGL `{CMRA Σ} := IrisGL {
   (* logical thread state *)

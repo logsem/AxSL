@@ -40,7 +40,8 @@ From iris.base_logic Require Import iprop.
 
 From self Require Import stdpp_extra.
 
-From self.algebra Require Import base.
+From self.algebra Require Export base.
+From self.lang Require Export instrs mm.
 
 Module Edge.
   (* Edge *)
@@ -156,13 +157,13 @@ Section lemmas.
     iIntros "[% (Hg1&%&%&%)]".
     iIntros "[% (Hg2&%&%&%)]".
     iDestruct (graph_agree_agree with "Hg1 Hg2") as %->.
-    iExists _. iFrame. iSplit;first done. iSplit;first done.
-    iPureIntro. simpl.
-    apply Graph.acq_po_subseteq_lob.
+    iExists _. iFrame.
+    iPureIntro. do 2 (split;first assumption).
+    simpl. apply Graph.acq_po_subseteq_lob.
     2:{ assumption. }
     rewrite /AAConsistent.acq_reads.
     destruct H3 as [_ [? [Hlk He]]].
-    set_unfold. eexists;eauto. split;first eassumption.
+    set_unfold. exists x. split;first eassumption.
     eapply AAConsistent.event_is_read_with_P_impl;last eassumption.
     intros. naive_solver.
   Qed.
@@ -176,9 +177,9 @@ Section lemmas.
     iIntros "[% (Hg1&%&%&%)]".
     iIntros "[% (Hg2&%&%&%)]".
     iDestruct (graph_agree_agree with "Hg1 Hg2") as %->.
-    iExists _. iFrame. iSplit;first done. iSplit;first done.
-    iPureIntro. simpl.
-    apply Graph.po_rel_subseteq_lob. done.
+    iExists _. iFrame.
+    iPureIntro. do 2 (split;first assumption).
+    simpl. apply Graph.po_rel_subseteq_lob. done.
     rewrite /AAConsistent.acq_reads.
     destruct H6 as [_ [?  [Hlk He]]].
     set_unfold. eexists.
@@ -186,12 +187,13 @@ Section lemmas.
     rewrite /AAConsistent.event_is_rel.
     rewrite /AAConsistent.event_is_write_with_kind in He.
     eapply AAConsistent.event_is_write_with_P_impl;[|eassumption].
-    simpl. intros.
-    rewrite /AACandExec.Candidate.kind_of_wreq_P.
-    rewrite /AACandExec.Candidate.kind_of_wreq_P in H6.
-    destruct (AAInter.WriteReq.access_kind wreq );try contradiction.
-    case_bool_decide.
-    rewrite H7. simpl. done.
+    simpl. rewrite /AACandExec.Candidate.kind_of_wreq_P.
+    intros ? wr HwrP.
+    destruct (AAInter.WriteReq.access_kind wr);try contradiction.
+    case_bool_decide as Heq.
+    rewrite Heq. simpl.
+    rewrite (bool_decide_ext _ True). done.
+    split; (intro; done).
     contradiction.
   Qed.
 
@@ -201,8 +203,8 @@ Section lemmas.
   Proof.
     rewrite edge_eq /edge_def.
     iIntros "[% (Hg1&%&%&%)]".
-    iExists _. iFrame. iSplit;first done. iSplit;first done.
-    iPureIntro. simpl.
+    iExists _. iFrame.
+    iPureIntro. do 2 (split;first done).
     simpl in H3. apply Graph.addr_subseteq_lob;done.
   Qed.
 
@@ -212,8 +214,8 @@ Section lemmas.
   Proof.
     rewrite edge_eq /edge_def.
     iIntros "[% (Hg1&%&%&%)]".
-    iExists _. iFrame. iSplit;first done. iSplit;first done.
-    iPureIntro. simpl.
+    iExists _. iFrame.
+    iPureIntro. do 2 (split;first done).
     simpl in H3. apply Graph.data_subseteq_lob;done.
   Qed.
 
@@ -223,8 +225,8 @@ Section lemmas.
   Proof.
     rewrite edge_eq /edge_def.
     iIntros "[% (Hg1&%&%&%)]".
-    iExists _. iFrame. iSplit;first done. iSplit;first done.
-    iPureIntro. simpl.
+    iExists _. iFrame.
+    iPureIntro. do 2 (split;first done).
     simpl in H3. apply Graph.lob_subseteq_ob;done.
   Qed.
 
@@ -237,8 +239,9 @@ Section lemmas.
     iIntros "[% (Hg1&%&%&%)]".
     iIntros "[% (Hg2&%&%&%)]".
     iDestruct (graph_agree_agree with "Hg1 Hg2") as %->.
-    iExists _. iFrame. iSplit;first done. iSplit;first done.
-    iPureIntro. simpl. set_solver + H3 H6.
+    iExists _. iFrame.
+    iPureIntro. do 2 (split;first done).
+    set_solver + H3 H6.
   Qed.
 
   Lemma fre_is_ob a b:
@@ -248,8 +251,9 @@ Section lemmas.
   Proof.
     rewrite edge_eq /edge_def.
     iIntros (?) "[% (Hg1&%&%&%)]".
-    iExists _. iFrame. iSplit;first done. iSplit;first done.
-    iPureIntro. simpl. apply Graph.fre_subseteq_ob;done.
+    iExists _. iFrame.
+    iPureIntro. do 2 (split;first done).
+    simpl. apply Graph.fre_subseteq_ob;done.
   Qed.
 
   Lemma rfe_is_ob a b:
@@ -259,8 +263,9 @@ Section lemmas.
   Proof.
     rewrite edge_eq /edge_def.
     iIntros (?) "[% (Hg1&%&%&%)]".
-    iExists _. iFrame. iSplit;first done. iSplit;first done.
-    iPureIntro. simpl. apply Graph.rfe_subseteq_ob;done.
+    iExists _. iFrame.
+    iPureIntro. do 2 (split;first done).
+    apply Graph.rfe_subseteq_ob;done.
   Qed.
 
   Lemma po_dmbsy_po_is_lob a b c:
@@ -273,9 +278,9 @@ Section lemmas.
     iIntros "[% (Hg1&%&%&%)] [% (Hg2&%&%&_&%)] [% (Hg3&%&%&%)]".
     iDestruct (graph_agree_agree with "Hg1 Hg2") as %->.
     iDestruct (graph_agree_agree with "Hg1 Hg3") as %->.
-    iExists _. iFrame. iSplit;first done. iSplit;first done.
-    iPureIntro. simpl in *. apply (Graph.po_dmbsy_po_subseteq_lob _ a b c).
-    done.
+    iExists _. iFrame.
+    iPureIntro. do 2 (split;first done).
+    apply (Graph.po_dmbsy_po_subseteq_lob _ a b c). done.
     rewrite /Edge.ef_node_interp in H6.
     rewrite /AAConsistent.dmbs. destruct H6 as [?  [Hlk He]].
     set_unfold. eexists;eauto.
@@ -313,7 +318,7 @@ Section lemmas.
     iDestruct (graph_agree_agree with "Hg1 Hg3") as %->.
     iDestruct (graph_agree_agree with "Hg1 Hg4") as %->.
     iDestruct (graph_agree_agree with "Hg1 Hg5") as %->.
-    iExists _. iFrame. iSplit; first done. iSplit; first done.
+    iExists _. iFrame. iSplit; first (iPureIntro;assumption). iSplit; first (iPureIntro;assumption).
     iPureIntro. simpl in *. apply (Graph.ctrl_isb_po_subseteq_lob _ a b c).
     + done.
     + unfold AAConsistent.isbs. destruct H6 as [? [Hlk He]].
@@ -335,8 +340,8 @@ Section lemmas.
     iIntros "[% (Hg1&%&%&%)]".
     iIntros "[% (Hg2&%&%&%)]".
     iDestruct (graph_agree_agree with "Hg1 Hg2") as %->.
-    iExists _. iFrame. iSplit;first done. iSplit;first done.
-    iPureIntro. simpl.
+    iExists _. iFrame.
+    iPureIntro. do 2 (split;first done).
     rewrite /AAConsistent.ob.
     eapply GRel.grel_plus_trans;done.
   Qed.
@@ -358,8 +363,9 @@ Section lemmas.
     iIntros "[% (Hg1&%&%&%)]".
     iIntros "[% (Hg2&%&%&%)]".
     iDestruct (graph_agree_agree with "Hg1 Hg2") as %->.
-    iExists _. iFrame. iSplit;first done. iSplit;first done.
-    iPureIntro. simpl. eapply Graph.po_transitive;done.
+    iExists _. iFrame.
+    iPureIntro. do 2 (split;first done).
+    eapply Graph.po_transitive;done.
   Qed.
 
   Lemma po_irrefl a:

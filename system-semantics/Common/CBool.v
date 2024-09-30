@@ -1,8 +1,8 @@
 (*                                                                               *)
 (*  BSD 2-clause License                                                         *)
 (*                                                                               *)
-(*  This applies to all files in this archive except where                       *)
-(*  specified otherwise.                                                         *)
+(*  This applies to all files in this archive except folder                      *)
+(*  "armv9-instantiation-types" or where specified otherwise.                    *)
 (*                                                                               *)
 (*  Copyright (c) 2022                                                           *)
 (*    Thibaut Pérami                                                             *)
@@ -127,7 +127,10 @@ Notation "x =? y" := (bool_decide (x = y)) (at level 70, no associativity)
     : stdpp_scope.
 
 (** Convert automatical a Decidable instance (Coq standard library) to
-    a Decision instance (stdpp) *)
+    a Decision instance (stdpp)
+
+    TODO: Decide (no pun intended) if we actually want to use Decidable or
+    Decision in this development. *)
 Global Instance Decidable_to_Decision P `{dec : Decidable P} : Decision P :=
   match dec with
   | {| Decidable_witness := true; Decidable_spec := spec |} =>

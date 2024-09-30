@@ -34,13 +34,12 @@
 (*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
 (*                                                                                  *)
 
-From stdpp.unstable Require Export bitvector.
-From stdpp.unstable Require Import bitvector_tactics.
+From stdpp.bitvector Require Import definitions tactics.
 
 From iris.proofmode Require Import tactics.
 From iris.algebra Require Import excl.
 
-From self.middle Require Import rules specialised_rules.
+From self.mid Require Import rules specialised_rules.
 Require Import ISASem.SailArmInstTypes.
 
 Import uPred.
@@ -54,22 +53,32 @@ Notation write_rel reg_res addr := (IStore AS_rel_or_acq AV_plain reg_res (AEval
 Notation dmb_sy := (IDmb AAArch.Sy).
 Notation bne reg addr:= (IBne (AEreg reg) addr).
 
-(* The protocol at the given location is used to implement a try-lock *)
-Class IsLockAt `{CMRA Σ} `{!AABaseG} `{!invGS_gen HasNoLc Σ} `{!UserProt} (a : Addr) (P : Eid -> iProp Σ) :=
-  {
-    lock_prot_def val eid := (if bool_decide (val = unlocked) then excl_inv eid P
+(* (* The protocol at the given location is used to implement a try-lock *) *)
+(* Class IsLockAt `{CMRA Σ} `{!AABaseG} `{!invGS_gen HasNoLc Σ} (a : Addr) (P : Eid -> iProp Σ) := *)
+(*   { *)
+(*     lock_prot_def val eid := (if bool_decide (val = unlocked) then excl_inv eid P *)
+(*                               else *)
+(*                                 if bool_decide (val = locked) then True *)
+(*                                 else False)%I; *)
+(*     (* lock_prot_spec : forall (val:Val) eid, prot a val eid ⊣⊢ lock_prot_def val eid ; *) *)
+(*   }. *)
+
+Definition lock_prot `{CMRA Σ} `{!AABaseG} `{!invGS_gen HasNoLc Σ} P val eid := (if bool_decide (val = unlocked) then excl_inv eid P
                               else
                                 if bool_decide (val = locked) then True
-                                else False)%I;
-    lock_prot_spec : forall (val:Val) eid, prot a val eid ⊣⊢ lock_prot_def val eid ;
-  }.
+                                else False)%I.
 
+Local Instance lock_prot_persist `{CMRA Σ} `{!AABaseG} `{!invGS_gen HasNoLc Σ} P val eid: Persistent (lock_prot P val eid).
+Proof.
+  unfold lock_prot.
+  case_bool_decide. apply _.
+  case_bool_decide; apply _.
+Qed.
 
 Section implementation.
   Context `{AAIrisG} `{!AAThreadG} `{ThreadGN}.
-  Context `{!UserProt}.
   Context (lock_addr : Addr).
-  Context `{!IsLockAt lock_addr P}.
+  Context `{P: Eid -> iProp Σ}.
 
   Context (inst_addr_start : Addr).
   Context (r1 r2 : RegName).
@@ -82,13 +91,14 @@ Section implementation.
     (inst_addr_start `+Z` 8)%bv ↦ᵢ write_xcl r2 lock_addr ∗
     (inst_addr_start `+Z` 12)%bv ↦ᵢ dmb_sy.
 
-  Definition acquire {tid Φ} P':
+  Definition acquire {tid Φ} P' q:
     None -{LPo}> -∗
     ∅ -{Ctrl}> -∗
     None -{Rmw}> -∗
     (∃ rv, r1 ↦ᵣ rv) -∗
     (∃ rv, r2 ↦ᵣ rv) -∗
     last_local_write tid lock_addr None -∗
+    Prot[ lock_addr , q | lock_prot P ] -∗
     instrs_aquire -∗
     (∀ eid, P eid ==∗ P' eid) -∗
     (* continuation *)
@@ -106,7 +116,7 @@ Section implementation.
                          ⌜ctrl_src = {[eid_xr]}⌝ ∗
                          ⌜rmw_src = Some eid_xr⌝ ∗
                          last_local_write tid lock_addr (Some eid_xw) ∗
-                         eid_xw ↦ₐ P' eid_lw ∗
+                         eid_xw ↦ₐ (P' eid_lw ∗ Prot[ lock_addr , q | lock_prot P ]) ∗
                          eid_lw -{Edge.Ob}> eid_xw ∗
                          eid_b -{E}> (Event.B (AAArch.DMB AAArch.Sy)) ∗
                          eid_xw -{Edge.Po}> eid_b
@@ -118,18 +128,19 @@ Section implementation.
     WPi (LTSI.Normal, inst_addr_start) @ tid
       {{ λ lts', Φ lts'}}.
   Proof.
-    iIntros "Hpo_src Hctrl_src Hrmw [% Hr1] [% Hr2] Hlocal Hinstrs Himpl Hcont".
+    iIntros "Hpo_src Hctrl_src Hrmw [% Hr1] [% Hr2] Hlocal Hprot Hinstrs Himpl Hcont".
     iDestruct "Hinstrs" as "(#? & #? & #? & #?)".
 
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src Hctrl_src Hlocal Hrmw Hr1]").
+    iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src Hctrl_src Hlocal Hprot Hrmw Hr1]").
     {
-      iApply (iload_excl (λ eid_w v, lock_prot_def v eid_w)%I ∅ ∅ with "[-] []").
+      iApply (iload_excl (λ eid_w v, lock_prot P v eid_w ∗ Prot[ lock_addr , q | lock_prot P ])%I ∅ ∅ with "[- Hprot]").
       iFrame "#∗".  rewrite big_sepM_empty big_sepS_empty //.
 
-      iIntros. iSplitL.
+      iIntros. iSplitR.
       - iIntros "_ _". rewrite big_sepM_empty //.
-      - iIntros (??) "_ _ _ _ _ _ #H !>".
-        by iApply lock_prot_spec.
+      - iExists _,_,emp%I. iSplitL. iIntros "_";iFrame.
+        iIntros (??) "_ _ _ _ _ Hp _ #H !>".
+        iFrame "H Hp".
     }
     iIntros (?) "(->&(%&%&%&(#HRX&%&Hr1&Hna&_&#Hrfe&#Hext&Hpo_src&Hctrl_src&Hrmw&Hlocal)))".
 
@@ -153,20 +164,18 @@ Section implementation.
       iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src Hctrl_src Hlocal Hrmw Hr2 Hna Himpl]").
       {
         iDestruct (lpo_to_po with "Hpo_src") as "[Hpo_src #Hpo]".
-        iApply (istore_rel_excl P P' emp {[eid := lock_prot_def (BV 64 0) eid']} _ _ r2 with "[- ]").
+        iApply (istore_rel_excl P P' (Prot[ lock_addr , q | lock_prot P ]) {[eid := (lock_prot P 0 eid' ∗ Prot[ lock_addr , q | lock_prot P ])%I]} _ _ r2 with "[- ]").
         {
           iFrame "#∗". rewrite !big_sepM_singleton. iFrame "#". iFrame.
-          iIntros "Hlock". rewrite /lock_prot_def.
-          case_bool_decide. done. case_bool_decide. rewrite /locked in H6. inversion H6.
-          iExFalso. done.
+          (* iIntros "Hlock". rewrite /lock_prot_def. *)
+          (* case_bool_decide. done. case_bool_decide. rewrite /locked in H6. inversion H6. *)
+          (* iExFalso. done. *)
         }
         {
-          iIntros (?) "_ _ _".
+          iExists _,_,emp%I. rewrite big_sepM_singleton. iSplitL. iIntros "[Hprot Hp]". iFrame.
+          iIntros (?) "_ _ Hp".
           iApply fupd_mask_intro. set_solver +.
-          iIntros "Hmod". iNext. iMod "Hmod". iModIntro.
-          iSplit;first done.
-          iModIntro. iApply lock_prot_spec. rewrite /lock_prot_def.
-          case_bool_decide. inversion H5. case_bool_decide;done.
+          iIntros "Hmod". iNext. iMod "Hmod". iModIntro. iFrame "Hp".
         }
       }
       simpl. iIntros (?) "(->&(%&Hr2&Hctrl&Hrmw&Hpost))".
@@ -175,7 +184,7 @@ Section implementation.
       destruct b_succ.
       {
         iDestruct "Hpost" as "(%&HXW&%Htid&#Hpo&Hpo_src&Hlocal&Hna)".
-        iMod (annot_split_iupd with "Hna") as "[Hna _]".
+        (* iMod (annot_split_iupd with "Hna") as "Hna Hna_p]". *)
         rewrite dom_singleton_L. rewrite big_sepS_singleton.
 
         iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src]").
@@ -189,7 +198,6 @@ Section implementation.
 
         iApply "Hcont".
         iExists eid, (BV 64 0), (bool_to_bv 64 true),∅. iFrame.
-        iExists _,_,_. iFrame.
         iIntros "_". iSplit;first done.
         iExists eid', eid0, eid_dmb. iFrame. iFrame "#".
         do 3 (iSplit;first done).
@@ -214,7 +222,7 @@ Section implementation.
 
         iApply "Hcont".
         iExists eid, (BV 64 0), (bool_to_bv 64 false), ∅.
-        iFrame. iExists _,_,_. iFrame.
+        iFrame.
         iIntros "[_ %HH]".
         exfalso. simpl in HH. rewrite /locked in HH. simpl.
         destruct (bool_decide ((bv_unsigned (bool_to_bv 64 false)) = 0)) eqn:Heqn;rewrite HH /= in Heqn;done.
@@ -222,7 +230,6 @@ Section implementation.
     }
 
     iApply "Hcont". destruct rv0. iExists eid, v, _, _. iFrame.
-    iExists _,_,_. iFrame.
     iIntros "[%HH _]". exfalso. simpl in HH. rewrite HH in Hlocked. rewrite /unlocked in Hlocked. contradiction.
   Qed.
 
@@ -230,7 +237,7 @@ Section implementation.
   Definition instrs_release : iProp Σ :=
     (inst_addr_start) ↦ᵢ write_rel "r0" lock_addr.
 
-  Definition release {tid o_po_src o_lw o_rmw ctrl_src Φ} po_priors lob_priors R:
+  Definition release {tid o_po_src o_lw o_rmw ctrl_src Φ} po_priors lob_priors R q:
     po_priors ⊆ dom lob_priors ->
     o_po_src -{LPo}> -∗
     ([∗ set] po_src ∈ po_priors, po_src -{Po}>) -∗
@@ -239,14 +246,14 @@ Section implementation.
     last_local_write tid lock_addr o_lw -∗
     instrs_release -∗
     ([∗ map] lob_pred ↦ P ∈ lob_priors, lob_pred ↦ₐ P) -∗
-    (
+    (∃ Q, (([∗ map] _ ↦ P ∈ lob_priors, P) -∗ Prot[ lock_addr ,q | lock_prot P ] ∗ Q) ∗
       ∀ eid,
         (eid -{N}> Edge.W AS_rel_or_acq AV_plain -∗
          ([∗ set] po_prior ∈ po_priors, po_prior -{Edge.Po}> eid) -∗
          [∗ set] lob_pred ∈ (dom lob_priors ∖ po_priors), lob_pred -{Edge.Lob}> eid) ∗
         ((eid -{E}> (Event.W AS_rel_or_acq AV_plain lock_addr unlocked) ∗
              ([∗ set] po_src ∈ po_priors, po_src -{Edge.Po}> eid) ∗
-             [∗ map] _ ↦ P ∈ lob_priors, P) ==∗ P eid ∗ R)
+             Q) ==∗ P eid ∗ R)
     ) -∗
     (* continuation *)
     (
@@ -256,7 +263,7 @@ Section implementation.
                Some eid -{LPo}> ∗
                ctrl_src -{Ctrl}> ∗
                last_local_write tid lock_addr (Some eid) ∗
-               eid ↦ₐ R
+               eid ↦ₐ (R ∗ Prot[ lock_addr ,q | lock_prot P ])
       ) -∗
       WPi (LTSI.Normal , (inst_addr_start `+Z` 4)%bv) @ tid  {{ lts, Φ lts }}
     )-∗
@@ -267,18 +274,19 @@ Section implementation.
 
     iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src Hpo_srcs Hctrl_src Hlocal Hrmw Hannot Himpl]").
     {
-      iApply (istore_rel_raw R po_priors lob_priors _ _ Hsub with "[-]").
+      iApply (istore_rel_raw (R ∗ Prot[ lock_addr ,q | lock_prot P ]) po_priors lob_priors _ _ Hsub with "[-]").
       iFrame "#∗".
+      iDestruct "Himpl" as "[%[Hprot Himpl]]".
+      iExists _,_,_. iFrame.
 
-      iIntros (?). iDestruct ("Himpl" $! eid) as "[$ Himpl]".
-      iIntros "HW _ Hpo HP".
+      iIntros (?).
+      iDestruct ("Himpl" $! eid) as "[$ Himpl]".
+      iIntros "HW _ Hpo Hp HP".
       iSpecialize ("Himpl" with "[$HW $Hpo $HP]").
       iMod "Himpl" as "[HP HR]".
       iDestruct (excl_inv_alloc eid P with "HP") as ">#Hexcl_inv".
-      iModIntro. iSplit;first done. iModIntro.
-      iApply lock_prot_spec.
-      rewrite /lock_prot_def.
-      case_bool_decide; done.
+      iModIntro. iFrame.
+      rewrite /lock_prot. case_bool_decide; done.
     }
     iIntros (?) "(->&(%&#HE&?&?&?&?&?))".
 

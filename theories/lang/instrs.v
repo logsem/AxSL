@@ -39,7 +39,7 @@ Require Import Strings.String.
 (* to use monad notations *)
 Require Import stdpp.base.
 Require Import stdpp.gmap.
-Require Import stdpp.unstable.bitvector.
+Require Import stdpp.bitvector.definitions.
 
 Require Import ISASem.Interface.
 
@@ -181,5 +181,9 @@ Section interpretation.
     end.
 
   Definition EmptyInterp : iMon () := Ret tt.
+
+  (* XXX: If InstrInterp gets too unwieldy, might be worth dropping the instruction
+     type and just directly storing coq functions describing instruction
+     behaviour in instruction memory *)
 
 End interpretation.

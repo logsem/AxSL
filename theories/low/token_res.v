@@ -34,76 +34,49 @@
 (*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
 (*                                                                                  *)
 
-From self.low.rules Require Import prelude.
+From iris.bi Require Import derived_laws.
 
-Import uPred.
+From self.lang Require Import mm opsem.
+From self.algebra Require Import base.
+From self.low Require Import edge event annotations.
 
-Section rules.
-  Context `{AAIrisG} `{Htg: !ThreadGNL}.
-  Import ThreadState.
-  Lemma branch_announce {tid : Tid} {ts ctxt addr dep}:
-    ThreadState.ts_reqs ts = AAInter.Next (AAInter.BranchAnnounce addr dep) ctxt ->
-    ⊢
-    SSWP (LThreadState.LTSNormal ts) @ tid {{ λ lts',
-      ⌜lts' = LThreadState.LTSNormal ((incr_cntr ts)
-        <| ts_ctrl_srcs := LThreadStep.deps_of_depon tid ts dep ∪ (ThreadState.ts_ctrl_srcs ts) |>
-        <| ts_reqs := ctxt tt |> ) ⌝
-    }}.
+
+Section def.
+  Context `{CMRA Σ} `{!AABaseG}.
+
+  (** Graph *)
+  Import AACandExec.
+  (* Token for RMWs *)
+  Definition token_interp (s : gset Eid) : iProp Σ :=
+    own AARmwTokenN (● (GSet s)).
+
+End def.
+
+Lemma token_interp_alloc `{CMRA Σ} `{!AABaseInG}:
+  ⊢ |==> ∃ GN, (own GN (● (GSet (∅ : gset Eid)))).
+Proof.
+  iDestruct (own_alloc (● (GSet (∅ : gset Eid)))) as ">[% ?]".
+  apply auth_auth_valid. done.
+  iModIntro. iExists _. iFrame.
+Qed.
+
+Section lemma.
+  Context `{CMRA Σ}.
+  Context `{!AABaseG}.
+
+  Lemma token_alloc {gs tid pg na}:
+    na_at_progress (GlobalState.gs_graph gs) tid pg na ∗
+    token_interp (dom na) ==∗
+    let eid := ThreadState.progress_to_node pg tid in
+    token_interp ({[eid]} ∪ (dom na)) ∗ Tok{ eid }.
   Proof.
-    iIntros (Hreqs).
-    rewrite sswp_eq /sswp_def /=.
-    iIntros (????) "H". iNamed "H".
-    inversion Hat_prog as [Hpg]. clear Hat_prog.
-    case_bool_decide as Hv.
-    2: {
-      rewrite (LThreadStep.step_progress_valid_is_reqs_nonempty _ _ _ ts) in Hv; [|done|done].
-      rewrite Hreqs /EmptyInterp /= in Hv. exfalso. apply Hv. congruence.
-    }
-    iIntros (?). iNamed 1.
-
-    inversion_step Hstep.
-
-    iNamed "Hinterp_annot". iDestruct "Hannot_at_prog" as "#Hannot_at_prog".
-    iMod (annot_alloc na (get_progress ts) tid gs emp%I with "[$Hinterp_annot $Hannot_at_prog //]") as "(Hinterp_annot & _)".
-    iMod (token_alloc with "[$Hinterp_token $Hannot_at_prog //]") as "(Hinterp_token & _)".
-
-    iExists emp%I, ∅, ∅, ls.
-    iModIntro. iSplitR. { iApply empty_na_splitting_wf. }
-    iSplitR.
-    (** getting out resources from FE *)
-    {
-      rewrite flow_eq_dyn_unseal /flow_eq_dyn_def.
-      iIntros (??). repeat iNamed 1.
-
-      pose proof (prot_inv_unchanged _ σ s_ob eid Hgraph_wf) as Hprot_inv.
-      iDestruct "Hob_pred_sub" as %Hob_pred_sub.
-      iDestruct "Hob_pred_nin" as %Hob_pred_nin.
-      ospecialize* Hprot_inv.
-      { set_solver + Hv. }
-      { set_solver + Hob_pred_nin. }
-      { set_solver + Hob_pred_sub. }
-      rewrite Hgr_lk /= in Hprot_inv.
-
-      iDestruct (Hprot_inv with "Hob_st") as ">Hob_st".
-
-      iApply step_fupd_intro;first set_solver +.
-      iNext. iExists σ.
-      iFrame.
-    }
-
-    iSplitL "Hinterp_annot Hinterp_token".
-    { rewrite -map_union_assoc map_empty_union insert_union_singleton_l.
-      iFrame. rewrite dom_union_L dom_singleton_L. by iFrame. }
-    
-    iSplitL; last (clear;done).
-    iNamed "Hinterp_local". iSplitL "Hinterp_local_lws".
-    {
-      iApply (last_write_interp_progress_non_write with "Hinterp_local_lws");first reflexivity.
-      intro Hin. erewrite progress_to_node_mk_eid_ii in Hin;last reflexivity.
-      pose proof (AAConsistent.event_is_write_elem_of_mem_writes2 _ Hgraph_wf Hin) as [? [Hlk' HW]].
-      rewrite Hgr_lk in Hlk'. inversion Hlk'. subst x. done.
-    }
-    iApply (po_pred_interp_skip with "Hinterp_po_src");reflexivity.
+    iIntros "[Hnin Hint]".
+    iDestruct (na_at_progress_not_elem_of with "Hnin") as %Hnin.
+    rewrite rmw_token_eq /rmw_token_def /token_interp.
+    rewrite -own_op. iApply (own_update with "Hint").
+    apply auth_update_alloc.
+    apply gset_disj_alloc_empty_local_update.
+    set_solver + Hnin.
   Qed.
 
-End rules.
+End lemma.

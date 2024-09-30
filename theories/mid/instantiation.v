@@ -42,14 +42,14 @@ From iris.algebra Require Export agree gset lib.dfrac_agree.
 From iris.base_logic.lib Require Export ghost_map.
 
 From self.lang Require Import opsem.
-From self.low Require Export instantiation.
-From self.middle Require Export weakestpre.
+From self.low Require Export instantiation instantiation_local.
+From self.mid Require Export weakestpre.
 
 
 Class AAThreadInG `{CMRA Σ} := {
-  AAInGRegs :> ghost_mapG Σ RegName RegVal;
-  AAInGCtrlSrc :> inG Σ (dfrac_agreeR (gsetO Eid));
-  AAInGRmwPred :> inG Σ (dfrac_agreeR (optionO (leibnizO Eid)));
+  AAInGRegs :: ghost_mapG Σ RegName RegVal;
+  AAInGCtrlSrc :: inG Σ (dfrac_agreeR (gsetO Eid));
+  AAInGRmwPred :: inG Σ (dfrac_agreeR (optionO (leibnizO Eid)));
 }.
 
 Class ThreadGN `{AALocGNs : !ThreadGNL} := {
@@ -65,7 +65,7 @@ Class ThreadGN `{AALocGNs : !ThreadGNL} := {
 Section genAAThreadG.
   Class AAThreadG `{CMRA Σ} :=
     GenAALThreadG{
-        AAIn :> AAThreadInG;
+        AAIn :: AAThreadInG;
       }.
 
   Definition AAThreadΣ : gFunctors :=
@@ -179,7 +179,7 @@ Section instantiation.
     f_equal. apply (bool_decide_unpack _). by compute.
     rewrite own_op. iDestruct "H" as "[? ?]".
     iModIntro. iFrame.
-    iExists _. iFrame. iPureIntro. set_solver + Hsub.
+    iPureIntro. set_solver + Hsub.
   Qed.
 
   Definition rmw_pred_interp (m : optionO (leibnizO Eid)) := own AARmwPredN (to_dfrac_agree (DfracOwn (1/2)%Qp) m).
@@ -227,7 +227,7 @@ End instantiation.
 
 Lemma thread_local_interp_alloc `{CMRA Σ} `{!AAThreadG} (HGNL: ThreadGNL) (ts : ThreadState.t):
   (∃ w, ts.(ThreadState.ts_regs) !! RNPC  = Some (mk_regval w ∅)) ->
-  ⊢ |==> ∃ `{!ThreadGN}, thread_local_interp ts ∗
+  ⊢ |==> ∃ `(!ThreadGN), thread_local_interp ts ∗
                         ([∗ map] r ↦ rv ∈ (delete (RNPC) ts.(ThreadState.ts_regs)), r ↦ᵣ rv) ∗
                         ts.(ThreadState.ts_ctrl_srcs) -{Ctrl}> ∗
                         ts.(ThreadState.ts_rmw_pred) -{Rmw}>.
@@ -242,7 +242,7 @@ Proof.
   iExists (Build_ThreadGN HGNL RN CN WN).
   iFrame. rewrite rmw_pred_half_eq ctrl_src_half_eq. iFrame.
   rewrite big_sepM_delete;last exact Hpc. iDestruct "Hregs" as "[Hpc Hregs]".
-  rewrite reg_mapsto_eq. iFrame. iSplitL "Hpc"; iExists _;iFrame. done.
+  rewrite reg_mapsto_eq. iFrame. done.
 Qed.
 
 (* Instantiation of mid-level logic *)
@@ -259,37 +259,38 @@ Lemma inst_post_lifting_lifting `{AAIrisG} tid Φ (addr: Addr) annot :
   inst_post_lifting tid addr Φ.
 Proof.
   iIntros (Hdom) "Hannot Himp". iIntros (?) "[Hinterp ?]".
-  iDestruct (annot_agree_big with "Hinterp Hannot") as "[%Hsub #[% Hag]]".
+  iDestruct (annot_agree_big with "Hinterp Hannot") as "[%Hsub #Hag]".
   iModIntro. iSplitR "Himp Hannot". iFrame.
   iIntros "All".
   iApply "Himp". iApply big_sepM_later_2.
   iClear "Hannot".
-  iInduction annot as [|i x Hlkm H' ] "IH" using map_ind forall (m'' na Hsub). done.
+  iInduction annot as [|i x Hlkm H' ] "IH" using map_ind forall (na Hsub). done.
   rewrite big_sepM_insert;last done.
   rewrite dom_insert_L in Hdom. assert (is_Some(na !! i)) as [? Hlk].
   apply elem_of_dom. set_solver.
-  iDestruct (big_sepM2_dom with "Hag") as %Hdom'.
-  assert (is_Some(m'' !! i) ) as [? Hlk''].
-  apply elem_of_dom. set_solver + Hdom'.
-  rewrite -(insert_delete m'' i x1);last done.
-  rewrite big_sepM2_insert. 2:done. 2: apply lookup_delete_None;left;done.
+  (* iDestruct (big_sepM2_dom with "Hag") as %Hdom'. *)
+  (* assert (is_Some(m'' !! i) ) as [? Hlk'']. *)
+  (* apply elem_of_dom. set_solver + Hdom'. *)
+  (* rewrite -(insert_delete m'' i x1);last done. *)
+  rewrite big_sepM_insert. 2:done.
   rewrite Hlk /=.
   rewrite -(insert_delete na i x0);last done.
   iDestruct (big_sepM_insert with "All") as "[H All]".
   apply lookup_delete_None;left;done.
   case_bool_decide.
-  2:{ specialize (Hdom i). feed specialize Hdom. set_solver +. done. }
+  2:{ specialize (Hdom i). ospecialize (Hdom _). set_solver +. done. }
   iDestruct "Hag" as "[Hag1 Hag]".
   iSplitL "H".
-  iNext. iDestruct ("Hag1" with "H") as "[$ _]".
+  iNext. iApply "Hag1". done. (* ("Hag1" with "H") as "[$ _]". *)
   iApply ("IH" with "[] [] [Hag] All").
   iPureIntro. apply set_Forall_union_inv_2 in Hdom. done.
   iPureIntro. rewrite dom_delete_L. apply elem_of_dom_2 in Hlk. apply not_elem_of_dom_2 in H'. set_solver.
   iModIntro.
-  iApply (big_sepM2_impl with "Hag").
-  iModIntro. iIntros (??? Hlkm' Hlkdm).
+  iApply (big_sepM_impl with "Hag").
+  iModIntro. iIntros (?? Hlkm').
   destruct (decide (i = k)). subst k.
-  rewrite lookup_delete_Some in Hlkdm. destruct Hlkdm;done.
+  (* rewrite lookup_delete_Some in Hlkdm. destruct Hlkdm;done. *)
+  rewrite lookup_delete /=. iIntros "_";done.
   rewrite lookup_delete_ne //.
   rewrite insert_delete //.
   iApply bi.wand_refl.

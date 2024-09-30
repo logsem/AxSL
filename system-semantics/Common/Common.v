@@ -1,8 +1,8 @@
 (*                                                                               *)
 (*  BSD 2-clause License                                                         *)
 (*                                                                               *)
-(*  This applies to all files in this archive except where                       *)
-(*  specified otherwise.                                                         *)
+(*  This applies to all files in this archive except folder                      *)
+(*  "armv9-instantiation-types" or where specified otherwise.                    *)
 (*                                                                               *)
 (*  Copyright (c) 2022                                                           *)
 (*    Thibaut Pérami                                                             *)
@@ -122,6 +122,11 @@ Create HintDb vec discriminated.
 
 (*** Finite decidable quantifiers ***)
 
+(* TODO maybe express with a decidable instance instead : There are consequences
+   for extraction though
+   TODO: That is the new plan now: move everything to Decision.
+ *)
+
 Definition fforallb `{Finite A} (P : A -> bool) : bool :=
   forallb P (enum A).
 
@@ -151,6 +156,7 @@ Qed.
 
 (*** Finite number utilities *)
 
+(* TODO upstream to stdpp *)
 Bind Scope fin_scope with fin.
 
 (* stdpp provides notation from 0 to 10. We need them up to 30 for

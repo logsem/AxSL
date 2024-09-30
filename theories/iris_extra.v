@@ -170,7 +170,7 @@ Section gmap.
     rewrite big_sepS_proper.
     - reflexivity.
     - intros x Hin.
-      rewrite map_lookup_imap lookup_gset_to_gmap. case_option_guard;done.
+      rewrite map_lookup_imap lookup_gset_to_gmap. case_guard;done.
   Qed.
 
   Lemma big_sepM_sepM2_zip `{Countable K} {A B} (m1: gmap K A) (m2: gmap K B) (f: K-> A->B->PROP) :
@@ -193,7 +193,7 @@ Section gmap.
       2:{ apply lookup_insert_Some;auto. }
       2:{ apply lookup_insert_Some;auto. }
       rewrite lookup_insert /=. rewrite delete_insert_delete. rewrite delete_insert //.
-      specialize (IHm2 (delete k m1)). feed specialize IHm2.
+      specialize (IHm2 (delete k m1)). ospecialize (IHm2 _).
       - rewrite dom_delete_L. rewrite Heq. rewrite dom_insert_L. apply not_elem_of_dom in Hlk'. set_solver + Hlk'.
       - rewrite -IHm2.
         f_equiv. apply big_sepM_proper.

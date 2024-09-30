@@ -41,7 +41,10 @@ From iris.prelude Require Import options.
 
 From iris_named_props Require Export named_props.
 
-From self.low Require Export iris interp_mod.
+From self.low Require Export iris interp_mod annotations.
+
+(* TODO remove dep on opsem *)
+From self.lang Require Export opsem.
 Import uPred.
 
 (* to facilitate TC search *)
@@ -68,7 +71,51 @@ Proof.
   by iMod ("H" with "Hna") as "[$ $]".
 Qed.
 
-Definition sswp_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!Protocol} (tid: Tid) :
+Definition flow_eq_dyn_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} (gr: Graph.t) (e: Eid) (flow_in: mea Σ) (R: iProp Σ) : iProp Σ :=
+   ∀ (σ: ob_st) (s_ob: gset Eid),
+  (* NOTE: can also use [ob_pred_of], but not necessary *)
+  "Hob_pred_sub" ∷ ⌜(Graph.obs_pred_of gr e) ⊆ s_ob ⌝ -∗
+  (* NOTE: this is not helpful for adequacy proof,
+     but can help us not consider the opposite case when proving proof rules *)
+  "Hob_pred_nin" ∷ ⌜e ∉ s_ob ⌝ -∗
+  (* interpretation for [σ] *)
+  "Hob_st" ∷ ob_st_interp gr σ s_ob -∗
+  (* local ob resources, give more info about [σ] *)
+  "R_lob_in" ∷ ([∗ map] R_in ∈ flow_in, R_in)
+  (* some external resources hold at [σ] before [e] (at all ob-predecessors of [e]) *)
+  ={⊤,∅}=∗ ▷ |={∅,⊤}=>
+  (* may update [σ] to [σ'] *)
+  ∃ (σ': ob_st),
+  (* update interpretation accordingly *)
+  "Hob_st" ∷ ob_st_interp gr σ' ({[ e ]} ∪ s_ob) ∗
+  "R" ∷ R.
+
+  (* We don't want to unfold [flow_eq_dyn] *)
+  Local Definition flow_eq_dyn_aux : seal (@flow_eq_dyn_def). Proof. by eexists. Qed.
+  Definition flow_eq_dyn := flow_eq_dyn_aux.(unseal).
+  Definition flow_eq_dyn_unseal :
+    @flow_eq_dyn = @flow_eq_dyn_def := flow_eq_dyn_aux.(seal_eq).
+  Global Arguments flow_eq_dyn {Σ _ _ _}.
+
+  Lemma flow_eq_dyn_proper `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} gr e flow_in R1 R2 :
+    □ ▷(R1 -∗ R2) -∗
+    flow_eq_dyn gr e flow_in R1 -∗
+    flow_eq_dyn gr e flow_in R2.
+  Proof.
+    iIntros "#Himpl".
+    rewrite flow_eq_dyn_unseal. unfold flow_eq_dyn_def.
+    iIntros "H % %". repeat iNamed 1.
+    iSpecialize ("H" with "Hob_pred_sub Hob_pred_nin Hob_st R_lob_in").
+    iMod "H". iModIntro. iNext. iMod "H".
+    iDestruct "H" as "(% &$&R)".
+    iApply "Himpl". by iFrame.
+  Qed.
+
+(* The only diff between [sswp] and [wp] is that [sswp] is a one time thing - [\phi] holds after a step,
+   while in [wp], we have to keep showing [wp] for the updated states, until termination when we show [\phi].
+   The rest - what we do for each step we take is idential. See comments in the defintion of [wp] for explanations.
+ *)
+Definition sswp_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} (tid: Tid) :
   LThreadState.t -d> (LThreadState.t -d> iPropO Σ) -d> iPropO Σ :=
   (λ s Φ,
     if LThreadState.is_terminated s then |=i=> Φ s
@@ -76,75 +123,102 @@ Definition sswp_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!
     (
       ∀ (gs : GlobalState.t) pg s' ls,
         let gr := gs.(GlobalState.gs_graph) in
-        (* the graph is forall quantified and interpreted,
-          it combining with resources gives us partial facts about the graph *)
         "%Hgraph_co" ∷ ⌜AAConsistent.t gr⌝ ∗
         "%Hgraph_wf" ∷ ⌜AACandExec.NMSWF.wf gr⌝ ∗
         "#Hinterp_global" ∷ (□ gconst_interp gs) ∗
         "%Hstep" ∷ ⌜LThreadStep.t gs tid s s'⌝ ∗
         "%Hat_prog" ∷ ⌜LThreadState.at_progress s pg⌝ ∗
         "Hinterp_local" ∷ local_interp gs tid pg ls -∗
-        (if (bool_decide (ThreadState.progress_is_valid gr tid pg)) then
+        if (bool_decide (progress_is_valid gr tid pg)) then
+          let e := (ThreadState.progress_to_node pg tid) in
+           (* [e] is valid, we need to do things *)
            ∀ (na : mea Σ),
            "Hannot_at_prog" ∷ na_at_progress gr tid pg na ∗
            "Hinterp_annot" ∷ annot_interp na
            ==∗
-           let e := (ThreadState.progress_to_node pg tid) in
            let s_lob := (Graph.lob_pred_of gr e) in
-           let s_obs := (Graph.obs_pred_of gr e) in
            ∃ (R: iProp Σ) (na_used na_unused : mea Σ) (ls' : log_ts_t),
-             (na_splitting_wf s_lob na na_used na_unused ∗
-              flow_eq s_lob s_obs e na_used R) ∗
+             na_splitting_wf s_lob na na_used na_unused ∗
+             flow_eq_dyn gr e na_used R ∗
              annot_interp ({[e := R]} ∪ na_unused ∪ na) ∗
              (local_interp gs tid (LThreadState.get_progress s') ls') ∗
              Φ s'
-         else |=i=>
-             ((local_interp gs tid (LThreadState.get_progress s') ls) ∗
-             Φ s')))
+        else
+          (* [e] is not valie, we skip it *)
+          |=i=> ((local_interp gs tid (LThreadState.get_progress s') ls) ∗ Φ s'))
     )%I.
 
 Definition sswp_aux : seal (@sswp_def). Proof. by eexists. Qed.
 Definition sswp := sswp_aux.(unseal).
-Arguments sswp {Σ _ _ _ _ _}.
-Lemma sswp_eq `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!Protocol} : sswp = @sswp_def Σ _ _ _ _ _.
+Arguments sswp {Σ _ _ _ _}.
+Lemma sswp_eq `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} : sswp = @sswp_def Σ _ _ _ _.
 Proof. rewrite -sswp_aux.(seal_eq) //. Qed.
 
-Definition wp_pre `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!Protocol} (tid : Tid)
+Definition wp_pre `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} (tid : Tid)
     (wp : LThreadState.t -> (LThreadState.t -> iProp Σ) -> iProp Σ)
         : LThreadState.t -> (LThreadState.t -> iProp Σ) -> iProp Σ :=
   (λ s Φ,
+     (* In case that [s] is a terminated state, we show that [\phi] hold when all annotated resources holds.
+      Note that it is a trick (done by [post_lifting]) aiming for recovering a post condition without annotations at all.
+      The downside is that it breaks vertical compositionality *)
     if LThreadState.is_terminated s then (post_lifting Φ tid) s
     else
     (
       ∀ (gs : GlobalState.t) pg s' ls,
         let gr := gs.(GlobalState.gs_graph) in
-        (* the graph is forall quantified and interpreted,
-          it combining with resources gives us partial facts about the graph *)
+        (* the graph [gr] is universally quantified and interpreted
+           it combining with graph resources gives us partial facts about the graph *)
+        (* [gr] is consistent wrt user Arm model *)
         "%Hgraph_co" ∷ ⌜AAConsistent.t gr⌝ ∗
+        (* [gr] is well-formed *)
         "%Hgraph_wf" ∷ ⌜AACandExec.NMSWF.wf gr⌝ ∗
+        (* logical interpretation of [gr] *)
         "#Hinterp_global" ∷ (□ gconst_interp gs) ∗
+        (* taking an Opax step *)
         "%Hstep" ∷ ⌜LThreadStep.t gs tid s s'⌝ ∗
+        (* [s] is in sync with the (thread local) checking progress [pg] *)
         "%Hat_prog" ∷ ⌜LThreadState.at_progress s pg⌝ ∗
+        (* thread local logical interpretation for local logical (ghost) state [ls], wrt [gs], [tid], and [pg] *)
         "Hinterp_local" ∷ local_interp gs tid pg ls -∗
-        (if (bool_decide (ThreadState.progress_is_valid gr tid pg)) then
+        (* if current [pg] of thread [tid] is valid - if we are checking a valid event of [gr] *)
+        (
+        if (bool_decide (progress_is_valid gr tid pg)) then
+          let e := (progress_to_node pg tid) in
+           (* CASE: [pg] is valid *)
+           (* [na] is the node annotation ~= eid -> iProp *)
            ∀ (na : mea Σ),
+           (* [na] is in sync with checking progress [pg] - making sure every checked event has an annotation *)
            "Hannot_at_prog" ∷ na_at_progress gr tid pg na ∗
+           (* the logical interpretation of [na] *)
            "Hinterp_annot" ∷ annot_interp na ==∗
-           let e := (ThreadState.progress_to_node pg tid) in
+           (* [s_lob] is the set of all local ob predecessors of [e] *)
            let s_lob := (Graph.lob_pred_of gr e) in
-           let s_obs := (Graph.obs_pred_of gr e) in
+           (* [R] is the annotation for [e],
+              [na_used] is what resources from [s_lob] to get [R],
+              [na_unused] is the remaining resources on [s_lob],
+              [ls'] is the new local logical state.
+              these have to be given by the user to proceed *)
            ∃ (R: iProp Σ) (na_used na_unused : mea Σ) (ls' : log_ts_t),
-             (na_splitting_wf s_lob na na_used na_unused ∗
-               flow_eq s_lob s_obs e na_used R) ∗
+             (* show [na_used] and [na_unused] effectively split the fragement of [na] whose domain is [s_lob] *)
+             na_splitting_wf s_lob na na_used na_unused ∗
+             (* validate the resources flowing to [e] (i.e [na_used] and external ones from the protocol) result in [R] *)
+             flow_eq_dyn gr e na_used R ∗
+             (* update the interpretation to reflect the movement *)
              annot_interp ({[e := R]} ∪ na_unused ∪ na) ∗
+             (* reestablish the relation between new logical state [ls'] and new physical state [s'] *)
              (local_interp gs tid (LThreadState.get_progress s') ls') ∗
+             (* get a wp for the next state [s'] *)
              wp s' Φ
-         else |=i=>
-             ((local_interp gs tid (LThreadState.get_progress s') ls) ∗
-           wp s' Φ)))
-    )%I.
+        else
+          (* CASE: [pg] is not valid - usually means we have just finished checking an instruction *)
+          (* one can do some annotation spliting (cf the modality [|=i=>]) *)
+          (* but nothing else - in particular no resource flowing *)
+          (* XXX: maybe we can do more things here, don't see anything else that can help though *)
+          |=i=> ((local_interp gs tid (LThreadState.get_progress s') ls) ∗ wp s' Φ)
+        )
+  ))%I.
 
-Local Lemma wp_pre_mono `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!Protocol} tid
+#[local] Lemma wp_pre_mono `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} tid
     (wp1 wp2 : LThreadState.t -> (LThreadState.t -> iProp Σ) -> iProp Σ) :
   ⊢ (□ ∀ s Φ, wp1 s Φ -∗ wp2 s Φ) →
     ∀ s Φ, wp_pre tid wp1 s Φ -∗ wp_pre tid wp2 s Φ.
@@ -153,17 +227,19 @@ Proof.
   destruct (LThreadState.is_terminated s); first done.
   iIntros (????) "Hs". iDestruct ("Hwp" with "Hs") as "Hwp".
   case_bool_decide.
-  - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&(?&HFE)&?&?&Hwp)";iModIntro.
-    iExists _,_,_,_. iFrame "HFE". iFrame. by iApply "H".
+  - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&(?&$)&?&Hannot&?&Hwp)";iModIntro.
+    iExists R,_. iSpecialize ("H" with "Hwp"). iFrame.
   - iDestruct "Hwp" as ">[? ?]".
     iModIntro. iFrame. by iApply "H".
 Qed.
 
-Local Definition wp_pre' `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!Protocol} tid :
-  (prodO (leibnizO LThreadState.t) (LThreadState.t -d> iPropO Σ) → iPropO Σ) -> (prodO (leibnizO LThreadState.t) (LThreadState.t -d> iPropO Σ) → iPropO Σ) :=
+(* wrapper around [wp_pre] to make the type suitable for fixed point computation *)
+#[local] Definition wp_pre' `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} tid :
+  (prodO (leibnizO LThreadState.t) (LThreadState.t -d> iPropO Σ) → iPropO Σ) ->
+  (prodO (leibnizO LThreadState.t) (LThreadState.t -d> iPropO Σ) → iPropO Σ) :=
   uncurry ∘ wp_pre tid ∘ curry.
 
-#[local] Instance wp_pre_mono' `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!Protocol} tid: BiMonoPred (wp_pre' tid).
+#[local] Instance wp_pre_mono' `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} tid: BiMonoPred (wp_pre' tid).
 Proof.
   constructor.
   - iIntros (wp1 wp2 ??) "#H". iIntros ([s Φ]); iRevert (s Φ).
@@ -172,18 +248,19 @@ Proof.
   - intros wp Hwp n [s1 Φ1] [s2 Φ2] [?%leibniz_equiv ?]. simplify_eq/=.
     rewrite /curry /wp_pre /post_lifting. do 14 (f_equiv || done).
     2:{ rewrite /Datatypes.curry. by apply pair_ne. }
-    do 13 (f_equiv || done). rewrite /Datatypes.curry. by apply pair_ne.
+    do 14 (f_equiv || done). rewrite /Datatypes.curry. by apply pair_ne.
 Qed.
 
-Local Definition wp_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!Protocol} (tid: Tid) : LThreadState.t -> (LThreadState.t -> iProp Σ) -> iProp
-Σ:=
+(* we take a least fixed point of [wp_pre] to get really [wp] *)
+#[local] Definition wp_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} (tid: Tid) :
+  LThreadState.t -> (LThreadState.t -> iProp Σ) -> iProp Σ:=
   λ s Φ, bi_least_fixpoint (wp_pre' tid) (s,Φ).
 
 Definition wp_aux : seal (@wp_def). Proof. by eexists. Qed.
 Definition wp := wp_aux.(unseal).
 
-Arguments wp {Σ _ _ _ _ _}.
-Lemma wp_eq `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!Protocol} : wp = @wp_def Σ _ _ _ _ _.
+Arguments wp {Σ _ _ _ _}.
+Lemma wp_eq `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} : wp = @wp_def Σ _ _ _ _.
 Proof. rewrite -wp_aux.(seal_eq) //. Qed.
 
 (** Notations *)
@@ -206,7 +283,6 @@ Section wp.
   Context `{!invGS_gen HasNoLc Σ}.
   Context `{!irisG}.
   Context `{!irisGL}.
-  Context `{!Protocol}.
   Implicit Types Φ : LThreadState.t → iProp Σ.
   Implicit Types s : LThreadState.t.
   Implicit Types id : Tid.
@@ -237,7 +313,7 @@ Section wp.
     rewrite wp_unfold sswp_eq /wp_pre /sswp_def.
     destruct (is_terminated s) eqn:Hm;
     repeat setoid_rewrite (wp_unfold id s);rewrite /wp_pre ?Hm //=.
-    iSplitL.
+    iSplit.
     - by iIntros "? !>".
     - iApply post_lifting_interp_mod.
   Qed.
@@ -306,8 +382,8 @@ Section wp.
     { iMod "H". iModIntro. by iApply ("HΦ" with "[-]"). }
     iIntros (????) "Hs". iDestruct ("H" with "Hs") as "Hwp".
     case_bool_decide.
-    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&(?&FE)&?&?&Hwp)".
-      iExists _,_,_,_. iFrame "FE". iFrame. by iApply "HΦ".
+    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&(?&FE)&?&?&?&Hwp)".
+      iExists R,_,_. iFrame. by iApply "HΦ".
     - iDestruct "Hwp" as ">[? Hwp]". iModIntro. iFrame. by iApply "HΦ".
   Qed.
 
@@ -322,9 +398,9 @@ Section wp.
     case_bool_decide.
     - iIntros (?) "[Hs' Hannot]".
       rewrite interp_mod_eq /interp_mod_def.
-      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">(%&%&%&%&(?&FE)&Hannot&Hwp)".
-      iDestruct "Hwp" as "[Hwp H]". iSpecialize ("HΦ" with "H"). iDestruct ("HΦ" with "Hannot") as ">[? ?]".
-      iExists _,_,_,_. iFrame "FE". by iFrame.
+      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">(%&%&%&%&?&FE&Hannot&?&H)".
+      iSpecialize ("HΦ" with "H"). iDestruct ("HΦ" with "Hannot") as ">[? ?]".
+      iExists R. by iFrame.
     - iDestruct "Hwp" as ">[? Hwp]". iMod ("HΦ" with "Hwp"). iModIntro. iFrame.
   Qed.
 
@@ -348,8 +424,8 @@ Section wp.
     { by iApply (post_lifting_strong_mono with "IH HΦ"). }
     iIntros (????) "Hs". iDestruct ("IH" with "Hs") as "Hwp".
     case_bool_decide.
-    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&(?&FE)&?&?&Hwp)".
-      iExists _,_,_,_. iFrame "FE". iFrame. iApply ("Hwp" with "HΦ").
+    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&?&FE&?&?&Hwp)".
+      iExists R. iFrame. iApply ("Hwp" with "HΦ").
     - iMod "Hwp" as "[? Hwp]". iModIntro;iFrame. iApply ("Hwp" with "HΦ").
   Qed.
 
@@ -361,8 +437,8 @@ Section wp.
     { by iApply interp_mod_bupd. }
     iIntros (????) "Hs". iDestruct ("H" with "Hs") as "Hwp".
     case_bool_decide.
-    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">>(%&%&%&%&(?&FE)&?&Hwp)".
-      iExists _,_,_,_. iFrame "FE". by iFrame.
+    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">>(%&%&%&%&?&?&?&Hwp)".
+      iExists R. by iFrame.
     - iMod "Hwp" as ">[? ?]". iModIntro. iFrame.
   Qed.
 
@@ -377,8 +453,8 @@ Section wp.
     - iIntros (?) "[Hs' Hannot]".
       rewrite interp_mod_eq /interp_mod_def.
       iDestruct ("Hwp" with "Hannot") as ">[Hwp Hannot]".
-      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">(%&%&%&%&(?&FE)&?&Hwp)".
-      iModIntro. iExists _,_,_,_. iFrame "FE". by iFrame.
+      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">(%&%&%&%&?&?&?&Hwp)";iModIntro.
+      iExists R. by iFrame.
     - iMod "Hwp" as ">[? ?]". iModIntro. iFrame.
   Qed.
 
@@ -391,8 +467,8 @@ Section wp.
       iIntros (?) "Hannot". iDestruct ("H" with "Hannot") as ">[>$ $]". done. }
     iIntros (????) "Hs". iDestruct ("H" with "Hs") as "Hwp".
     case_bool_decide.
-    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&(?&FE)&?&?&Hwp)".
-      iExists _,_,_,_. iFrame "FE". by iFrame.
+    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&?&?&?&?&Hwp)".
+      iExists R. by iFrame.
     - iMod "Hwp" as "[? Hwp]". iApply interp_mod_bupd. iMod "Hwp".
       iModIntro. iModIntro. iFrame.
   Qed.
@@ -407,10 +483,10 @@ Section wp.
     case_bool_decide.
     - iIntros (?) "[Hs' Hannot]".
       rewrite interp_mod_eq /interp_mod_def.
-      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">(%&%&%&%&(?&FE)&Hannot&Hwp)".
+      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">(%&%&%&%&?&?&Hannot&Hwp)".
       iDestruct "Hwp" as "[? Hwp]".
       iDestruct ("Hwp" with "Hannot") as ">[Hwp Hannot]".
-      iExists _,_,_,_. iFrame "FE". by iFrame.
+      iExists R. by iFrame.
     - iMod "Hwp" as "[? Hwp]". iMod "Hwp". iModIntro. iFrame.
   Qed.
 
@@ -421,8 +497,8 @@ Section wp.
     { iApply post_lifting_interp_mod. iApply interp_mod_bupd. iMod "H". iModIntro. iModIntro. done. }
     iIntros (????) "Hs". iDestruct ("H" with "Hs") as "Hwp".
     case_bool_decide.
-    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">>(%&%&%&%&(?&FE)&?&?&Hwp)".
-      iExists _,_,_,_. iFrame "FE". by iFrame.
+    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">>(%&%&%&%&?&?&?&?&Hwp)".
+      iExists R. by iFrame.
     - iMod "Hwp" as ">[? Hwp]". iModIntro;iFrame.
   Qed.
 
@@ -436,8 +512,8 @@ Section wp.
     - iIntros (?) "[Hs' Hannot]".
       rewrite interp_mod_eq /interp_mod_def.
       iDestruct ("Hwp" with "Hannot") as ">[Hwp Hannot]".
-      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">(%&%&%&%&(?&FE)&?&Hwp)".
-      iModIntro. iExists _,_,_,_. iFrame "FE". by iFrame.
+      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">(%&%&%&%&?&?&?&Hwp)";iModIntro.
+      iExists R. by iFrame.
     - iMod "Hwp" as ">[? Hwp]". iModIntro;iFrame.
   Qed.
 
@@ -472,9 +548,8 @@ Section wp.
     { iMod "H". iApply interp_mod_bupd'. iMod "HP". by iApply "H". }
     iIntros (????) "Hs". iDestruct ("H" with "Hs") as "Hwp".
     case_bool_decide.
-    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&(?&FE)&?&?&Hwp)".
-      iExists _,_,_,_. iFrame "FE". iFrame.
-      iMod ("Hwp" with "HP") as "$".
+    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&?&?&?&?&Hwp)".
+      iExists R. iFrame. iMod ("Hwp" with "HP") as "$".
     - iMod "Hwp" as "[? Hwp]". iApply interp_mod_bupd'.
       iMod "HP". iMod ("Hwp" with "HP") as "$". done.
   Qed.
@@ -492,10 +567,10 @@ Section wp.
     - iIntros (?) "[Hs' Hannot]".
       rewrite interp_mod_eq /interp_mod_def.
       iDestruct ("HP" with "Hannot") as ">[HP Hannot]".
-      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">(%&%&%&%&(?&FE)&Hannot&Hwp)".
+      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">(%&%&%&%&?&?&Hannot&Hwp)".
       iDestruct "Hwp" as "[? Hwp]". iDestruct ("Hwp" with "HP") as "Hwp".
       iDestruct ("Hwp" with "Hannot") as ">[Hwp ?]".
-      iExists _,_,_,_. iFrame "FE". by iFrame.
+      iExists R. by iFrame.
     - iMod "Hwp" as "[? Hwp]".
       iMod "HP".  iMod ("Hwp" with "HP") as "?".
       iModIntro;iFrame.
@@ -511,9 +586,8 @@ Section wp.
     { iApply (post_lifting_strong_mono with "H"). iIntros (?) "H". iMod "HP". by iApply "H". }
     iIntros (????) "Hs". iDestruct ("H" with "Hs") as "Hwp".
     case_bool_decide.
-    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&(?&FE)&?&?&Hwp)".
-      iExists _,_,_,_. iFrame "FE". iFrame.
-      iMod "HP". iModIntro. iApply (wp_strong_mono with "Hwp").
+    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&?&?&?&?&Hwp)".
+      iExists R. iFrame. iMod "HP". iModIntro. iApply (wp_strong_mono with "Hwp").
       iIntros (k) "H"; iApply "H"; done.
     - iMod "HP". iMod "Hwp" as "[? Hwp]".
       iApply interp_mod_bupd'. iFrame.
@@ -531,11 +605,10 @@ Section wp.
     { iApply post_lifting_interp_mod. iMod "HP". iModIntro. iApply (post_lifting_strong_mono with "H"). iIntros (?) "H". by iApply "H". }
     iIntros (????) "Hs". iDestruct ("H" with "Hs") as "Hwp".
     case_bool_decide.
-    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&(?&FE)&Hannot&?&Hwp)".
-      iExists _,_,_,_. iFrame "FE".
+    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&?&?&Hannot&?&Hwp)".
       rewrite interp_mod_eq /interp_mod_def.
       iDestruct ("HP" with "Hannot") as ">[HP Hannot]".
-      iFrame. iApply (wp_strong_mono with "Hwp").
+      iExists R. iFrame. iApply (wp_strong_mono with "Hwp").
       iModIntro. iIntros (k) "H"; iApply "H"; done.
     - iMod "HP". iMod "Hwp" as "[? Hwp]".
       iApply interp_mod_bupd'. iFrame.
@@ -749,12 +822,12 @@ Section wp.
 
 End wp.
 
+
 Section proofmode_classes.
   Context `{CMRA Σ}.
   Context `{!invGS_gen HasNoLc Σ}.
   Context `{!irisG}.
   Context `{!irisGL}.
-  Context `{!Protocol}.
   Implicit Types P Q : iProp Σ.
   Implicit Types Φ : LThreadState.t → iProp Σ.
   (* Implicit Types E : coPset. *)

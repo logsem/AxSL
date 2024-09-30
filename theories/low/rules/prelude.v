@@ -35,7 +35,7 @@
 (*                                                                                  *)
 
 (* This file contains the helper tactics and lemmas that are useful for showing proof rules *)
-From stdpp Require Export unstable.bitvector.
+From stdpp.bitvector Require Export definitions.
 
 From iris.proofmode Require Export tactics.
 
@@ -43,7 +43,7 @@ Require Export ISASem.SailArmInstTypes.
 
 From self.lang Require Export opsem.
 From self.algebra Require Export base.
-From self.low Require Export weakestpre instantiation.
+From self.low Require Export weakestpre instantiation instantiation_local.
 From self.low.lib Require Export edge event.
 
 (* NOTE: all modules are exported, so that other rule files only need to import this prelude module *)
@@ -100,17 +100,17 @@ Section helpers.
        emp ot_coi_pred.
   Proof.
     iIntros (?? Hgr_lk Hw). repeat iNamed 1.
-    destruct ot_coi_pred;last done.
+    destruct ot_coi_pred; last (simpl;iFrame;clear;done).
     iDestruct(last_write_interp_agree_Some with "Hinterp_local_lws Hlocal") as %(W' & Hlk_w'&?&?&Hco&_).
-    simpl. iSplitR;first done. rewrite edge_eq /edge_def.
+    simpl. iSplitR;first (iPureIntro;assumption). rewrite edge_eq /edge_def.
     iNamed "Hinterp_global". alloc_graph_res.
-    apply Graph.wf_coi_inv;auto.
-    eapply Graph.wf_loc_inv_writes2. repeat eexists;eauto.
-    eapply AAConsistent.event_is_write_with_addr_elem_of_mem_writes in Hlk_w';eauto.
-    eapply (AAConsistent.event_is_write_with_addr_elem_of_mem_writes _ _ addr) in Hgr_lk;eauto.
+    apply Graph.wf_coi_inv;try assumption.
+    eapply Graph.wf_loc_inv_writes2. repeat eexists;(try eassumption).
+    eapply AAConsistent.event_is_write_with_addr_elem_of_mem_writes in Hlk_w';try eassumption.
+    eapply (AAConsistent.event_is_write_with_addr_elem_of_mem_writes _ _ addr) in Hgr_lk;try eassumption.
     set_solver + Hgr_lk Hlk_w'.
     rewrite -(progress_to_node_of_node tid t0);last done.
-    rewrite -progress_lt_po; last done. split;auto;split;auto.
+    rewrite -progress_lt_po; last done. repeat (split;try assumption).
     rewrite /progress_is_valid. rewrite progress_to_node_of_node;last done.
     set_solver + Hlk_w'.
     set_solver + Hgr_lk.

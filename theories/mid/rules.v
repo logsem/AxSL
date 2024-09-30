@@ -35,7 +35,7 @@
 (*                                                                                  *)
 
 (* This file lifts rules of the low-level logic to mid-level *)
-From stdpp.unstable Require Import bitvector bitvector_tactics.
+From stdpp.bitvector Require Import definitions tactics.
 
 From iris.proofmode Require Import tactics.
 
@@ -44,7 +44,7 @@ Require Import ISASem.SailArmInstTypes.
 From self Require Import stdpp_extra.
 From self.lang Require Export opsem.
 From self.low.rules Require Export prelude write_xcl write read barrier util reg announce.
-From self.middle Require Export instantiation excl.
+From self.mid Require Export instantiation excl.
 
 Import uPred.
 
@@ -82,7 +82,7 @@ Proof.
     pose proof (list_foldr_absorb (filter (λ x : AAInter.reg, x = r) dep) (filter (λ x : AAInter.reg, x ≠ r) dep)
                   (λ (r0 : AAInter.reg) (acc : gset Eid), from_option (λ rd : RegVal, reg_dep rd ∪ acc) acc (ts_regs !! r0))
       ∅ r ) as Heq.
-    feed specialize Heq.
+    ospecialize* Heq.
     {
       clear Heq Hsplit Hdom H.
       induction dep. by apply Forall_nil.
@@ -95,12 +95,12 @@ Proof.
     { intros. rewrite Hlk /=. set_solver +. }
     rewrite Hlk /=in Heq. rewrite Heq.
     specialize (H (filter (λ x : AAInter.reg, x ≠ r) dep)).
-    feed specialize H.
+    ospecialize (H _).
     exists r. exists (filter (λ x : AAInter.reg, x = r) dep).
     rewrite -Permutation_cons_app. reflexivity.
     rewrite Permutation_app_comm. done.
     specialize (H (delete r dep_regs) ts_regs).
-    feed specialize H.
+    ospecialize* H.
     etransitivity;[|exact Hsub']. apply delete_subseteq.
     rewrite dom_delete_L. rewrite Hdom.
     rewrite difference_union_distr_l_L.
@@ -140,7 +140,7 @@ Proof.
 Qed.
 
 Section rules.
-  Context `{AAIrisG} `{!AAThreadG} `{ThreadGN} `{!UserProt}.
+  Context `{AAIrisG} `{!AAThreadG} `{ThreadGN}.
   Import ThreadState.
 
   Lemma idone {addr tid Φ}:
@@ -153,7 +153,7 @@ Section rules.
     iIntros (? [? ?]). repeat iNamed 1.
     iApply wp_sswp.
     iApply (sswp_strong_mono with "[Hinst]").
-    { iApply (terminate with "[Hinst]") => //=.  }
+    { iApply (terminate with "[Hinst]") => //=. }
     iIntros (? ->). simpl.
     iApply ("Hcont" with "Hpost");done.
   Qed.
@@ -180,7 +180,7 @@ Section rules.
 
     iApply ("Hcont" $! (LTSI.Normal, addr) with "[//]").
     iPureIntro. split;auto. apply lookup_insert_Some;naive_solver.
-    iFrame;simpl. iExists _;iFrame.
+    iFrame.
   Qed.
 
   Lemma inc_pc {tid : Tid} {ins_addr ts Ψ}:
@@ -209,7 +209,7 @@ Section rules.
 
     iApply ("Hcont" with "[//]").
     iPureIntro. split;auto. apply lookup_insert_Some;naive_solver.
-    iFrame;simpl. iExists _;iFrame.
+    iFrame.
   Qed.
 
   Lemma inop {tid : Tid} {ins_addr} :
@@ -242,7 +242,7 @@ Section rules.
 
     iApply (wp_strong_mono with "[-]"). 2: { iIntros (?) "H". iModIntro. iExact "H". }
     iApply (inc_pc with "[-Hinterp]");eauto.
-    iIntros (?) "Hpost". iApply "Hcont". iFrame. iExists _;iFrame.
+    iIntros (?) "Hpost". iApply "Hcont". iFrame.
   Qed.
 
   Lemma iisb {tid : Tid} {ins_addr o_po_src ctrl_srcs} :
@@ -274,7 +274,7 @@ Section rules.
     iApply (inc_pc with "[-Hinterp]"); eauto.
     iIntros (?) "Hpost". iApply "Hcont". iFrame.
 
-    iExists _;iFrame. iApply big_sepS_subseteq;eauto.
+    iApply big_sepS_subseteq;eauto.
   Qed.
 
 
@@ -304,10 +304,10 @@ Section rules.
     - simpl. done.
     - simpl. intros.
       rewrite fmap_Some.
-      rewrite fmap_Some in H4.
-      destruct H4 as (?&?&?).
+      rewrite fmap_Some in H3.
+      destruct H3 as (?&?&?).
       eexists. split;eauto.
-      specialize (H5 r). rewrite H4 /= in H5.
+      specialize (H4 r). rewrite H3 /= in H4.
       destruct (regs' !! r) eqn:Heqn. subst x;done. done.
     - simpl. intros ??? Hae_val ?.
       destruct (eval_ae_val ae1 regs) eqn:Hae_val1. 2:{ inversion Hae_val. }
@@ -322,11 +322,11 @@ Section rules.
     eval_ae_val ae (filter (λ '(r,_) , r ∈@{gset _} list_to_set (dep_of_AE_aux ae)) regs) = Some v.
   Proof.
     revert v. induction ae;simpl;first done.
-    - intros. rewrite map_filter_lookup.
+    - intros. rewrite map_lookup_filter.
       rewrite fmap_Some.
-      rewrite fmap_Some in H4.
-      destruct H4 as (?&?&?).
-      eexists. rewrite H4 /=. rewrite option_guard_True.
+      rewrite fmap_Some in H3.
+      destruct H3 as (?&?&?).
+      eexists. rewrite H3 /=. rewrite option_guard_True.
       split;eauto.
       set_solver +.
     - intros ? Hae_val.
@@ -334,9 +334,9 @@ Section rules.
       destruct (eval_ae_val ae2 regs) eqn:Hae_val2. 2:{ inversion Hae_val. }
       simpl in Hae_val.
       rewrite list_to_set_app_L.
-      specialize (IHae1 v0). feed specialize IHae1;auto. rewrite (eval_ae_val_subseteq _ _ _ _ IHae1).
+      specialize (IHae1 v0). ospecialize* IHae1;auto. rewrite (eval_ae_val_subseteq _ _ _ _ IHae1).
       2: { apply map_filter_strong_subseteq_ext. intros ? ? [].  split;[set_solver|done]. }
-      specialize (IHae2 v1). feed specialize IHae2;auto. rewrite (eval_ae_val_subseteq _ _ _ _ IHae2).
+      specialize (IHae2 v1). ospecialize* IHae2;auto. rewrite (eval_ae_val_subseteq _ _ _ _ IHae2).
       2: { apply map_filter_strong_subseteq_ext. intros ? ? [].  split;[set_solver|done]. }
       done.
   Qed.
@@ -415,7 +415,7 @@ Section rules.
       2:{ intros. rewrite elem_of_filter. rewrite elem_of_dom. split;[intros [? []];eexists;done|intros [? []];split;eauto]. }
       assert (list_to_set (dep_of_AE_aux ae1) ⊆ dom dep_regs).
       { rewrite Hreg_dom. rewrite list_to_set_app_L. set_solver +. }
-      apply set_eq. intros. rewrite elem_of_filter. set_solver + H4.
+      apply set_eq. intros. rewrite elem_of_filter. set_solver + H3.
 
       eapply eval_ae_val_Some_unique;eauto.
       assert (filter (λ '(k, _), k ∈@{gset _} list_to_set (dep_of_AE_aux ae2)) dep_regs ##ₘ filter (λ '(k, _), k ∉@{gset _} list_to_set (dep_of_AE_aux ae2)) dep_regs) as Hdomdisj2.
@@ -442,7 +442,7 @@ Section rules.
         2:{ intros. rewrite elem_of_filter. rewrite elem_of_dom. split;[intros [? []];eexists;done|intros [? []];split;eauto]. }
         assert (list_to_set (dep_of_AE_aux ae2) ⊆ dom dep_regs).
         { rewrite Hreg_dom. rewrite list_to_set_app_L. set_solver +. }
-        apply set_eq. intros. rewrite elem_of_filter. set_solver + H4.
+        apply set_eq. intros. rewrite elem_of_filter. set_solver + H3.
 
         eapply eval_ae_val_Some_unique;eauto.
 
@@ -453,8 +453,8 @@ Section rules.
         iApply ("Hcont" with "[//] [] [HDR]").
         { iPureIntro.
           destruct Hreqs'' as [? ?].
-          split;auto. simpl in H4. inversion Hae_val;subst val. done.
-          rewrite H5. rewrite (comm Nat.add) Nat.iter_add. by apply ts_iis_incr_cntr_inversion.
+          split;auto. simpl in H3. inversion Hae_val;subst val. done.
+          rewrite H4. rewrite (comm Nat.add) Nat.iter_add. by apply ts_iis_incr_cntr_inversion.
         }
         done.
       }
@@ -500,9 +500,7 @@ Section rules.
         rewrite Hpred. iPureIntro. bv_unfold. bv_simplify. cbv. bv_solve.
       }
 
-      iFrame.
-      iSplitL "Hinterp_pc". { iExists w. iFrame. }
-      simpl.
+      iFrame. simpl.
       rewrite (reg_dep_fold_eq _ _ dep_regs).
       { rewrite union_empty_r_L. iFrame. }
       { exact Hrs_sub. }
@@ -522,9 +520,7 @@ Section rules.
         unfold ready_for_next_ins_at.
         iPureIntro; split; [done | by rewrite lookup_insert].
       }
-      iFrame.
-      iSplitL "Hinterp_pc". { iExists addr. iFrame. }
-      simpl.
+      iFrame. simpl.
       rewrite (reg_dep_fold_eq _ _ dep_regs).
       { rewrite union_empty_r_L. iFrame. }
       { exact Hrs_sub. }
@@ -565,14 +561,14 @@ Section rules.
     iIntros (?) "Hpost". iApply "Hcont". iFrame. iFrame.
 
     rewrite union_empty_r_L. rewrite /incr_cntr /=. rewrite (reg_dep_fold_eq _ _ dep_regs) //.
-    iFrame. iExists _;iFrame.
   Qed.
 
   (** helper lemmas *)
-  Lemma mem_read_external `{!UserProt} {tid : Tid} {o_po_src ctrl_srcs ts ctxt dep addr kind_s kind_v mrmw Ψ}
+  Lemma mem_read_external {tid : Tid} {o_po_src ctrl_srcs ts ctxt dep addr kind_s kind_v mrmw Ψ}
     R po_srcs lob_annot dep_regs:
     ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemRead 8 (readreq_of_store kind_s kind_v addr dep)) ctxt ->
     dom dep_regs = list_to_set (AAInter.DepOn.regs dep) ->
+    (* TODO : make a definition *)
     let reg_deps := map_fold (λ _ dv acc, reg_dep dv ∪ acc) ∅ dep_regs in
     let mem_deps :=
       foldr (λ (idx : N) (acc : gset Eid),
@@ -609,12 +605,15 @@ Section rules.
         ([∗ set] eid_addr_src ∈ reg_deps ∪ mem_deps, eid_addr_src -{(Edge.Addr)}> eid) -∗
         [∗ set] eid_pre ∈ dom lob_annot, eid_pre -{Edge.Lob}> eid) ∗
        (* FE *)
-       (∀ val eid_w,
+       (∃ prot q Q,
+           (([∗ map] _ ↦ annot ∈ lob_annot, annot) -∗
+            Prot[addr, q | prot ] ∗ Q) ∗
+           ∀ val eid_w,
+          Prot[addr, q | prot ] ∗ Q ∗
           R_graph_facts eid val eid_w ∗
-          ([∗ map] _ ↦ annot ∈ lob_annot, annot) ∗
-          □(prot addr val eid_w)
+          ▷(prot val eid_w)
           ={⊤}[∅]▷=∗
-          R addr val eid_w)) -∗
+          R addr val eid_w ∗ (prot val eid_w))) -∗
     (* continuation *)
     (
       ∀ ts' : ThreadState.t,
@@ -661,11 +660,13 @@ Section rules.
       simpl. erewrite reg_dep_fold_eq;eauto.
     }
     {
-      rewrite /R_graph_facts /=. iIntros (??) "H".
+      rewrite /R_graph_facts /=.
+      iDestruct "Hfe" as "(%&%&%&$&Hfe)".
+      iIntros (??) "H".
       set (pg := (get_progress ts)).
       erewrite (reg_dep_fold_eq _ (ts_regs ts) dep_regs);eauto. rewrite /reg_deps.
       iSpecialize ("Hfe" with "[-]").
-      iDestruct "H" as "[(?&?&?&?&?&?) H]".
+      iDestruct "H" as "($&$&(?&?&?&?&?&?&?)&H)".
       iSplitR "H". 2:{ iExact "H". } iFrame.
       iSplit;first done.
       iApply big_sepS_subseteq;eauto.
@@ -674,13 +675,17 @@ Section rules.
     iIntros (k) "(%&%&%&(?&?&Hctrl'&?&?&?&?)&Hlpo&Hna&Hlw)". subst k.
     iApply interp_mod_bupd'.
     iMod (rmw_pred_interp_update (if bool_decide (kind_v = AV_exclusive) || bool_decide (kind_v = AV_atomic_rmw)
-      then Some _ else mrmw) with "Hinterp_rmw Hrmw") as "[Hinterp_rmw Hrmw]".
+      then Some (progress_to_node (get_progress ts) tid) else mrmw) with "Hinterp_rmw Hrmw") as "[Hinterp_rmw Hrmw]".
     simpl.
     iFrame. simpl. iModIntro.
 
     iApply ("Hcont" with "[Hinterp_reg Hinterp_ctrl Hinterp_pc Hinterp_rmw] [] [-]").
-    iFrame. rewrite Hrmw_ag. iFrame. iExists _;done.
-    done.
+    rewrite Hrmw_ag. simpl. iFrame. simpl.
+    destruct kind_v;simpl;
+    case_bool_decide as Heq; first inversion Heq;
+    case_bool_decide as Heq'; first inversion Heq'; simpl; try done.
+    simpl;done.
+
     iExists val,eid_w,_. iSplit.
     2:{
       iFrame. simpl. erewrite reg_dep_fold_eq;eauto.
@@ -690,7 +695,7 @@ Section rules.
     done.
   Qed.
 
-  Lemma mem_write_non_xcl `{!UserProt} {tid : Tid} {o_po_src ctrl_srcs ts ctxt addr kind_s kind_v val
+  Lemma mem_write_non_xcl {tid : Tid} {o_po_src ctrl_srcs ts ctxt addr kind_s kind_v val
                               ot_coi_pred dep_addr dep_data Ψ} R po_srcs lob_annot dep_regs_data dep_regs_addr:
     ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemWrite 8 (writereq_of_store kind_s kind_v val addr dep_addr dep_data)) ctxt ->
     kind_v = AV_plain ->
@@ -735,9 +740,12 @@ Section rules.
      ([∗ set] eid_data_src ∈ reg_deps_data ∪ mem_deps_data, eid_data_src -{(Edge.Data)}> eid) -∗
      [∗ set] eid_pre ∈ dom lob_annot, eid_pre -{Edge.Lob}> eid) ∗
     (* FE *)
-    ((R_graph_facts eid) ∗ ([∗ map] _ ↦ annot ∈ lob_annot, annot)
+    (∃ prot q Q,
+       (([∗ map] _ ↦ annot ∈ lob_annot, annot) -∗ Prot[addr, q | prot ] ∗ Q) ∗
+       (Prot[addr, q | prot ] ∗ Q ∗
+       R_graph_facts eid
        ={⊤}[∅]▷=∗
-       R eid ∗ □(prot addr val eid))
+       R eid ∗ (prot val eid)))
     ) -∗
     (* continuation *)
     (
@@ -776,8 +784,8 @@ Section rules.
       destruct i0 as [x' Hlk'].
       rewrite map_subseteq_spec in Hintersec.
       specialize (Hintersec i x').
-      feed specialize Hintersec.
-      apply map_filter_lookup_Some.
+      ospecialize* Hintersec.
+      apply map_lookup_filter_Some.
       split. apply lookup_union_Some_l. done.
       split; eexists;done.
       apply lookup_union_Some_l.
@@ -798,13 +806,15 @@ Section rules.
       simpl. erewrite reg_dep_fold_eq;eauto.
     }
     {
-      rewrite /R_graph_facts /=. iIntros "H".
+      rewrite /R_graph_facts /=.
+      iDestruct "Hfe" as "(%&%&%&$&Hfe)".
+      iIntros "H".
       set (pg := (get_progress ts)).
       erewrite (reg_dep_fold_eq _ (ts_regs ts) dep_regs_addr);eauto. erewrite (reg_dep_fold_eq _ (ts_regs ts) dep_regs_data);eauto.
       rewrite /reg_deps_addr.
       iSpecialize ("Hfe" with "[-]").
-      iDestruct "H" as "[(?&?&?&?&?&?) H]".
-      iSplitR "H";last done. iFrame.
+      iDestruct "H" as "($&$&?&?&?&?&?&H)".
+      iFrame.
       iSplit;first done.
       iApply big_sepS_subseteq;eauto.
       iExact "Hfe".
@@ -812,18 +822,17 @@ Section rules.
     }
     iIntros (k) "(%&(?&?&?&?&?&?)&?&Hctrl'&?)"; subst k. simpl.
     iApply ("Hcont" with "[Hinterp_reg Hinterp_ctrl Hinterp_pc Hinterp_rmw] [] [-]").
-    iFrame. iExists _;done.
+    iFrame. 
     done.
 
-    iFrame. iExists (progress_to_node (get_progress ts) tid). iFrame.
-    iSplit; last done. iSplit; first done.
+    iFrame. iSplit; last done. iSplit; first done.
     simpl. erewrite (reg_dep_fold_eq _ (ts_regs ts) dep_regs_addr);eauto. erewrite (reg_dep_fold_eq _ (ts_regs ts) dep_regs_data);eauto.
     iFrame. iApply big_sepS_subseteq;eauto.
     { etrans. 2:exact Hdr_sub. apply map_union_subseteq_l. }
   Qed.
 
 
-  Lemma mem_write_xcl_None `{!UserProt} {tid : Tid} {ts ctxt addr kind_s kind_v val dep_addr dep_data Ψ}:
+  Lemma mem_write_xcl_None {tid : Tid} {ts ctxt addr kind_s kind_v val dep_addr dep_data Ψ}:
     ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemWrite 8 (writereq_of_store kind_s kind_v val addr dep_addr dep_data)) ctxt ->
     kind_v = AV_atomic_rmw ∨ kind_v = AV_exclusive ->
     None -{Rmw}> -∗
@@ -847,10 +856,10 @@ Section rules.
     iApply mem_write_xcl_None;eauto.
     iIntros (k) "%";subst k.
     iApply ("Hcont" with "[Hinterp_reg Hinterp_ctrl Hinterp_pc Hinterp_rmw] [] [-]").
-    iFrame. iExists _;done. auto. done.
+    iFrame. auto. done.
   Qed.
 
-  Lemma mem_write_xcl_Some `{!UserProt} {tid : Tid} {o_po_src ts ctxt addr kind_s kind_v val ot_coi_pred dep_addr dep_data rmw_src Ψ} R R_loc_in po_srcs ctrl_srcs lob_annot (dep_regs_addr: gmap _ _) dep_regs_data:
+  Lemma mem_write_xcl_Some {tid : Tid} {o_po_src ts ctxt addr kind_s kind_v val ot_coi_pred dep_addr dep_data rmw_src Ψ} R R_loc_in po_srcs ctrl_srcs lob_annot (dep_regs_addr: gmap _ _) dep_regs_data:
     ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemWrite 8 (writereq_of_store kind_s kind_v val addr dep_addr dep_data)) ctxt ->
     kind_v = AV_atomic_rmw ∨ kind_v = AV_exclusive ->
     dep_regs_addr ∩ dep_regs_data ⊆ dep_regs_data ->
@@ -901,9 +910,11 @@ Section rules.
     (* local resources that might flow into FE *)
     R_loc_in ∗
     (* FE *)
-    (R_loc_in ∗ R_graph_facts eid ∗ Tok{ eid } ∗ ([∗ map] _ ↦ annot ∈ lob_annot, annot)
+    (∃ prot q Q,
+       (([∗ map] _ ↦ annot ∈ lob_annot, annot) -∗ Prot[addr, q | prot ] ∗ Q) ∗
+      (R_loc_in ∗ Prot[addr, q | prot ] ∗ Q ∗ R_graph_facts eid ∗ Tok{ eid }
        ={⊤}[∅]▷=∗
-       R ∗ □(prot addr val eid))) -∗
+       R ∗ (prot val eid)))) -∗
     (* continuationh *)
     (
       ∀ ts' : ThreadState.t,
@@ -941,6 +952,7 @@ Section rules.
     iDestruct (ctrl_srcs_interp_agree with "Hinterp_ctrl Hctrl") as %Hctrl_sub.
     iDestruct (rmw_pred_interp_agree with "Hinterp_rmw Hrmw_src") as %Hrmw.
 
+    (* FIXME duplicate proof *)
     assert (dep_regs_data ⊆ ts_regs ts) as Hsub'.
     {
       etrans. 2:exact Hdr_sub.
@@ -949,9 +961,8 @@ Section rules.
       destruct (decide (is_Some (dep_regs_addr !! i))).
       destruct i0 as [x' Hlk'].
       rewrite map_subseteq_spec in Hintersec.
-      specialize (Hintersec i x').
-      feed specialize Hintersec.
-      apply map_filter_lookup_Some.
+      ospecialize* (Hintersec i x').
+      apply map_lookup_filter_Some.
       split. apply lookup_union_Some_l. done.
       split; eexists;done.
       apply lookup_union_Some_l.
@@ -973,13 +984,14 @@ Section rules.
       simpl. erewrite reg_dep_fold_eq;eauto.
     }
     {
-      rewrite /R_graph_facts /=. iIntros "[R_in H]".
+      rewrite /R_graph_facts /=. iDestruct "Hfe" as "(%&%&%&?&Hfe)".
+      iFrame.
+      iIntros "[R_in H]".
       set (pg := (get_progress ts)).
       erewrite (reg_dep_fold_eq _ (ts_regs ts) dep_regs_addr);eauto. erewrite (reg_dep_fold_eq _ (ts_regs ts) dep_regs_data);eauto.
       rewrite /reg_deps_addr.
       iSpecialize ("Hfe" with "[-]").
-      iDestruct "H" as "[(?&?&?&?&?&?) H]". iFrame "R_in".
-      iSplitR "H";last done. iFrame.
+      iDestruct "H" as "(?&?&(?&?&?&?&?&?) &H)". iFrame.
       iSplit;first done.
       iApply big_sepS_subseteq;eauto.
       iExact "Hfe".
@@ -987,7 +999,7 @@ Section rules.
     }
     iIntros (k) "[% [% H]]";subst k.
     simpl. iApply ("Hcont" with "[Hinterp_reg Hinterp_ctrl Hinterp_pc Hinterp_rmw] [] [-]").
-    iFrame. iExists _;done. auto.
+    iFrame. auto.
 
     iExists b_succ. iSplitR;first done. iFrame.
     simpl. erewrite (reg_dep_fold_eq _ (ts_regs ts) dep_regs_addr);eauto. erewrite (reg_dep_fold_eq _ (ts_regs ts) dep_regs_data);eauto.
@@ -1002,7 +1014,7 @@ Section rules.
     { etrans. 2:exact Hdr_sub. apply map_union_subseteq_l. }
   Qed.
 
-  Lemma mem_write_xcl_Some_inv `{!UserProt} {tid : Tid} {o_po_src ts ctxt addr kind_s kind_v val ot_coi_pred dep_addr dep_data rmw_src Ψ} R_loc_in R po_srcs ctrl_srcs lob_annot (dep_regs_addr: gmap _ _) dep_regs_data:
+  Lemma mem_write_xcl_Some_inv {tid : Tid} {o_po_src ts ctxt addr kind_s kind_v val ot_coi_pred dep_addr dep_data rmw_src Ψ} R_loc_in R po_srcs ctrl_srcs lob_annot (dep_regs_addr: gmap _ _) dep_regs_data:
     ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemWrite 8 (writereq_of_store kind_s kind_v val addr dep_addr dep_data)) ctxt ->
     kind_v = AV_atomic_rmw ∨ kind_v = AV_exclusive ->
     dep_regs_addr ∩ dep_regs_data ⊆ dep_regs_data ->
@@ -1055,10 +1067,12 @@ Section rules.
     (* FE, with excl invariant *)
     (∃ eid_w R_in P,
       (* excl invariant flows in *)
-      (R_loc_in ∗ R_graph_facts eid ∗ ([∗ map] _ ↦ annot ∈ lob_annot, annot) -∗
+        ∃ prot q Q,
+          (([∗ map] _ ↦ annot ∈ lob_annot, annot) -∗ Prot[addr, q | prot ] ∗ Q) ∗
+      (R_loc_in ∗ R_graph_facts eid ∗ Q ∗ Prot[addr, q | prot ] -∗
        R_in ∗ eid_w -{Edge.Rf}> rmw_src ∗ ⌜EID.tid eid_w ≠ EID.tid rmw_src⌝ ∗ excl_inv eid_w P) ∗
       (* FE *)
-      (R_in ∗ ▷ P eid_w ={⊤∖ ↑(excl_inv_name eid_w)}[∅]▷=∗ R ∗ □(prot addr val eid)))) -∗
+      (R_in ∗ ▷ P eid_w ={⊤∖ ↑(excl_inv_name eid_w)}[∅]▷=∗ R ∗ (prot val eid)))) -∗
     (* continuation *)
     (
       ∀ ts' : ThreadState.t,
@@ -1092,13 +1106,14 @@ Section rules.
   Proof.
     iIntros (?? Hintersec ???????) "Hpo_src Hpo_srcs Hctrl Hlw Hrmw_src HDRs Hna Hef_fe".
     iApply (mem_write_xcl_Some with "Hpo_src Hpo_srcs Hctrl Hlw Hrmw_src HDRs Hna [Hef_fe]");auto.
-    iIntros (?). iDestruct ("Hef_fe" $! eid) as "[$ [$ (%&%&%&Himpl&Hfe)]]".
-    iIntros "(R_loc_in & #R_gr &Htok&Hna)".
-    iDestruct ("Himpl" with "[$R_loc_in $R_gr $Hna]") as "(R_in & Ed_rf & Hext & Hinv)".
+    iIntros (?). iDestruct ("Hef_fe" $! eid) as "[$ [$ (%&%&%&Hfe)]]".
+    iDestruct "Hfe" as "(%&%&%&?&Hfe&Himpl)". iFrame.
+    iIntros "(R_loc_in & Hp & Q & #R_gr &Htok)".
+    iDestruct ("Hfe" with "[$R_loc_in $R_gr $Q $Hp]") as "(R_in & Ed_rf & Hext & Hinv)".
     iDestruct (excl_inv_open_succ with "[$Htok $Ed_rf $Hinv $Hext]") as ">P". done.
     { iDestruct "R_gr" as "(_&_&_&_&_&_&_&$)". }
     rewrite later_sep. iDestruct "P" as "[P Hclo]".
-    iDestruct ("Hfe" with "[$R_in $P]") as ">R".
+    iDestruct ("Himpl" with "[$R_in $P]") as ">R".
     iModIntro. iNext. iMod "R". iMod "Hclo". by iFrame.
   Qed.
 

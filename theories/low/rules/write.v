@@ -43,7 +43,7 @@ Section rules.
   Context `{AAIrisG} `{Htg: !ThreadGNL}.
   Import ThreadState.
 
-  Lemma mem_write_non_xcl `{!UserProt} {tid : Tid} {o_po_src ts ctxt addr kind_s kind_v val ot_coi_pred dep_addr dep_data} R po_srcs lob_annot:
+  Lemma mem_write_non_xcl {tid : Tid} {o_po_src ts ctxt addr kind_s kind_v val ot_coi_pred dep_addr dep_data} R po_srcs lob_annot:
     ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemWrite 8 (writereq_of_store kind_s kind_v val addr dep_addr dep_data)) ctxt ->
     kind_v = AV_plain ->
     let eid := progress_to_node (get_progress ts) tid in
@@ -71,9 +71,13 @@ Section rules.
      ([∗ set] eid_data_src ∈ LThreadStep.deps_of_depon tid ts (Some dep_data), eid_data_src -{(Edge.Data)}> eid) -∗
      [∗ set] eid_pre ∈ dom lob_annot, eid_pre -{Edge.Lob}> eid) -∗
     (* FE *)
-    (R_graph_facts ∗ ([∗ map] _ ↦ annot ∈ lob_annot, annot)
+    (∃ prot q Q,
+       (([∗ map] _ ↦ annot ∈ lob_annot, annot) -∗
+       Prot[addr, q | prot ] ∗ Q) ∗
+       (Prot[addr, q | prot ] ∗ Q ∗
+       R_graph_facts
        ={⊤}[∅]▷=∗
-       R eid ∗ □(prot addr val eid)) -∗
+       R eid ∗ (prot val eid))) -∗
     SSWP (LThreadState.LTSNormal ts) @ tid {{ λ lts',
       (* exists a bool (indicating if the (atomic) write succeeded) *)
       (* update lts' accordingly *)
@@ -92,14 +96,19 @@ Section rules.
     rewrite sswp_eq /sswp_def /=.
     iIntros (????) "H". iNamed "H".
     inversion Hat_prog as [Hpg]. clear Hat_prog.
+
+    inversion_step Hstep; resolve_atomic.
+    (* Hstep gives that a write event is happening *)
+    (* go to valid case *)
+    unfold eid0 in Hgr_lk.
+    rewrite -(progress_to_node_mk_eid_ii _ _ (get_progress ts)) in Hgr_lk;last done.
     case_bool_decide as Hv.
     2:{
-      rewrite (LThreadStep.step_progress_valid_is_reqs_nonempty _ _ _ ts) in Hv;[|done|done].
-      rewrite Hreqs /EmptyInterp /= in Hv. exfalso. by apply Hv.
+      rewrite (LThreadStep.step_progress_valid_is_reqs_nonempty _ _ _ ts) in Hv; [|reflexivity|eassumption].
+      rewrite Hreqs /EmptyInterp /= in Hv. exfalso. apply Hv. congruence.
     }
+
     iIntros (?). iNamed 1.
-    (* Hstep gives that a read event is happening *)
-    inversion_step Hstep; resolve_atomic.
 
     subst eid. set (eid := (mk_eid_ii ts tid)).
     iNamed "Hinterp_local".
@@ -107,19 +116,19 @@ Section rules.
     iDestruct (po_pred_interp_agree_big' with "Hinterp_po_src Hpo_srcs") as %Hpo_src.
 
     (** allocate resources *)
-    iDestruct (last_local_write_co with "Hinterp_global Hinterp_local_lws Hlocal") as "#Ed_co";[done|done|done| |].
-    simpl;case_bool_decide;done.
+    iDestruct (last_local_write_co with "Hinterp_global Hinterp_local_lws Hlocal") as "#Ed_co";[assumption|assumption|eassumption| |].
+    simpl. case_bool_decide;[done|contradiction].
 
     iAssert R_graph_facts as "#(E_W & Ed_po & Ed_ctrl & Ed_addr & Ed_data & _)".
     {
       rewrite /R_graph_facts edge_eq /edge_def. rewrite event_eq /event_def. iNamed "Hinterp_global".
 
       iSplitR;first alloc_graph_res.
-      { rewrite /AACandExec.Candidate.kind_of_wreq_P /=. repeat case_bool_decide;try contradiction;auto. }
+      { rewrite /AACandExec.Candidate.kind_of_wreq_P /=. repeat case_bool_decide;try contradiction;clear;auto. }
 
       iSplitL. iApply big_sepS_forall. iIntros (??). alloc_graph_res.
-      destruct (Hpo_src x) as [? [? ?]];auto. rewrite -(progress_to_node_of_node tid x);auto.
-      rewrite /eid. apply progress_lt_po;auto.
+      destruct (Hpo_src x) as [? [? ?]];first assumption. rewrite -(progress_to_node_of_node tid x);[|assumption].
+      rewrite /eid. apply progress_lt_po;first assumption. repeat (split;try assumption).
 
       iSplitR. rewrite big_sepS_forall. iIntros (??). alloc_graph_res.
 
@@ -148,14 +157,14 @@ Section rules.
     iMod (token_alloc with "[$Hinterp_token $Hannot_at_prog]") as "(Hinterp_token & Htok)".
     iDestruct "Hannot_at_prog" as %Hannot_at_prog.
 
-    iDestruct (annot_update_big with "Hinterp_annot Hannot") as ">(%lob_annot_uu&%Hannot_dom & Hinterp_annot & #Hannot_split)".
+    iDestruct (annot_detach_big with "Hinterp_annot Hannot") as ">(%lob_annot_uu&%Hannot_dom & Hinterp_annot & #Hannot_split)".
 
     (** update ls*)
-    iMod (po_pred_interp_update _ ts (ts <| ts_reqs := ctxt (inl None) |>) with "Hinterp_po_src Hpo_src") as "(Hinterp_po_src & Hpo_src)";auto.
+    iMod (po_pred_interp_update _ ts (ts <| ts_reqs := ctxt (inl None) |>) with "Hinterp_po_src Hpo_src") as "(Hinterp_po_src & Hpo_src)";[clear;auto|assumption|].
 
     iExists (R eid), lob_annot, lob_annot_uu, (ls <|lls_lws := <[addr := (Some (progress_to_node (get_progress ts) tid))]>ls.(lls_lws)|>
                                           <| lls_pop := Some eid|>).
-    iSplitL "Hfe". iSplitR.
+    iSplitR.
     (* show well-splittedness *)
     iModIntro. iSplit.
     { iPureIntro. by apply Edge.subseteq_lob. }
@@ -171,24 +180,43 @@ Section rules.
         set_solver + Hlk1 Hlob_annot_dom_sub.
       }
       rewrite lookup_insert_ne. 2:{ apply elem_of_dom_2 in Hna_lk. set_solver + Hna_lk Hpg_not_in. }
-      rewrite Hna_lk /=. iNext. rewrite wand_iff_sym //.
+      rewrite Hna_lk /=. iNext. iFrame.
     }
 
+    iSplitL "Hfe".
     (** pushing resources into FE *)
     {
-      iModIntro. repeat iNamed 1.
+      iModIntro.
+      rewrite flow_eq_dyn_unseal /flow_eq_dyn_def.
+      iIntros (??). repeat iNamed 1.
+     
+      iDestruct "Hfe" as "(% & % & % & Hprot & Hfe)".
 
-      rewrite /prot_node /=. erewrite progress_to_node_mk_eid_ii;last reflexivity.
-      rewrite iris_extra.big_sepS_to_map.
-      2:{ set_solver + Hlob. }
-      iDestruct ("Hfe" with "[R_lob_in]") as ">Hfe".
-      { iFrame "E_W Ed_po Ed_ctrl Ed_addr Ed_data Ed_co". iApply (big_sepM_proper with "R_lob_in");auto. }
+      iDestruct ("Hprot" with "R_lob_in") as "[Hp R_lob_in]".
+      iNamed "Hob_st".
 
-      iModIntro. iNext.
-      iDestruct (fupd_frame_l with "[E_W Hfe]") as "Hfe". iSplitR. iExact "E_W". iExact "Hfe".
-      iApply (fupd_mono with "Hfe"). iIntros "[#E_W [$ #R_prot]]".
-      iModIntro. iIntros (????) "E_W'". iDestruct (event_agree with "E_W E_W'") as %Heq.
-      inversion Heq;subst. iFrame "R_prot".
+      iDestruct (prot_loc_agree with "Hprot Hp") as "[% [%Hprot_map_lk #Heql]]".
+
+      pose proof (prot_inv_unchanged _ σ s_ob eid Hgraph_wf) as Hprot_inv.
+      iDestruct "Hob_pred_sub" as %Hob_pred_sub.
+      iDestruct "Hob_pred_nin" as %Hob_pred_nin.
+      ospecialize* Hprot_inv.
+      { set_solver + Hv. }
+      { set_solver + Hob_pred_nin. }
+      { set_solver + Hob_pred_sub. }
+      rewrite Hgr_lk /= in Hprot_inv.
+     
+      iDestruct ("Hfe" with "[R_lob_in Hp]") as ">Hfe".
+      { iFrame. iFrame "#". }
+
+      iModIntro. iNext. iMod "Hfe" as "[R Hp]".
+
+      iDestruct (Hprot_inv with "[Hp $Hprot $Hprot_res]") as ">Hprot".
+      rewrite Hprot_map_lk /=.
+      iSpecialize ("Heql" $! val(progress_to_node (get_progress ts) tid)).
+      iRewrite "Heql" in "Hp".
+      iFrame.
+      iFrame. clear;done.
     }
 
     iDestruct (na_at_progress_not_elem_of with "[]") as %Hna_not_in.
@@ -200,14 +228,14 @@ Section rules.
       rewrite !dom_union_L dom_singleton_L.
       assert ((dom lob_annot_uu ∪ dom na) = dom na) as ->.
       { rewrite Hannot_dom. set_solver + Hlob_annot_dom_sub. }
-      by iFrame.
+      iFrame. clear;done.
       apply not_elem_of_dom. rewrite Hannot_dom. set_solver + Hna_not_in Hlob_annot_dom_sub.
     }
 
     (* update and frame [my_local_interp] *)
     iDestruct (last_write_interp_progress_write _ (ts <| ts_reqs := ctxt (inl None) |>) with "Hinterp_local_lws Hlocal") as ">[$ $]".
     done. done. eexists. erewrite progress_to_node_mk_eid_ii;last reflexivity. split. exact Hgr_lk.
-    simpl. case_bool_decide;done.
+    simpl. case_bool_decide;[clear;done|contradiction].
     iFrame "Hinterp_po_src".
 
     iModIntro. iSplit. iPureIntro. done.

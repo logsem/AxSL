@@ -44,7 +44,7 @@ Section rules.
 
   Import ThreadState.
 
-  Lemma reload `{!UserProt} {tid : Tid} {ts instr val}:
+  Lemma reload {tid : Tid} {ts instr val}:
     ThreadState.ts_reqs ts = EmptyInterp ->
     ts.(ts_regs) !! RNPC = Some (val : RegVal) ->
     (val.(reg_val)) ↦ᵢ instr -∗
@@ -60,23 +60,24 @@ Section rules.
     case_bool_decide as Hv.
     {
       rewrite (LThreadStep.step_progress_valid_is_reqs_nonempty _ _ _ ts) in Hv;[|done|done].
-      done.
+      contradiction.
     }
 
     iDestruct (instr_agree_Some with "Hinterp_global Hinstr") as %Hinstr_lk.
     (* Hstep gives that a reload/terminating event is happening *)
     inversion_step Hstep.
-    2:{ (* not terminating *) rewrite Hreg in H4. inversion H4. subst val. rewrite Hinstr_lk // in H5. }
-    rewrite Hreg in H5. inversion H5. subst val. rewrite Hinstr_lk in H6. inversion H6.
+    2:{ (* not terminating *) rewrite Hreg in H3. inversion H3. subst val. rewrite Hinstr_lk in H4. inversion H4. }
+    rewrite Hreg in H4. inversion H4. subst val. rewrite Hinstr_lk in H5. inversion H5.
 
-    iModIntro. iSplitL "Hinterp_local";last done.
+    iModIntro. iSplitL "Hinterp_local";last (clear;done).
     { iNamed "Hinterp_local". iSplitL "Hinterp_local_lws".
-      iApply (last_write_interp_progress_non_write' with "Hinterp_local_lws");auto.
-      iApply (po_pred_interp_skip' with "Hinterp_po_src");auto.
+      iApply (last_write_interp_progress_non_write' with "Hinterp_local_lws");first reflexivity.
+      assumption.
+      iApply (po_pred_interp_skip' with "Hinterp_po_src"). reflexivity.
     }
   Qed.
 
-  Lemma terminate `{!UserProt} {tid : Tid} {ts val}:
+  Lemma terminate {tid : Tid} {ts val}:
     ThreadState.ts_reqs ts = EmptyInterp ->
     ts.(ts_regs) !! RNPC = Some (val : RegVal) ->
     (val.(reg_val)) ↦ᵢ - -∗
@@ -92,16 +93,16 @@ Section rules.
     case_bool_decide as Hv.
     {
       rewrite (LThreadStep.step_progress_valid_is_reqs_nonempty _ _ _ ts) in Hv;[|done|done].
-      done.
+      contradiction.
     }
 
     iDestruct (instr_agree_None with "Hinterp_global Hinstr") as %Hinstr_lk.
 
     (* Hstep gives that a reload/terminating event is happening *)
     inversion_step Hstep.
-    { (* not reload *) rewrite Hreg in H5. inversion H5. subst val. rewrite Hinstr_lk // in H6. }
+    { (* not reload *) rewrite Hreg in H4. inversion H4. subst val. rewrite Hinstr_lk in H5. inversion H5. }
 
-    iModIntro. iSplitL "Hinterp_local";last done. iFrame.
+    iModIntro. iSplitL "Hinterp_local";last (clear;done). iFrame.
   Qed.
 
 End rules.

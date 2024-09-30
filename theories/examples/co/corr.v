@@ -34,13 +34,13 @@
 (*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
 (*                                                                                  *)
 
-From stdpp.unstable Require Import bitvector bitvector_tactics.
+From stdpp.bitvector Require Import definitions tactics.
 
 From iris.proofmode Require Import tactics.
 
 From self.low Require Import instantiation.
 From self.low.lib Require Import edge event.
-From self.middle Require Import rules specialised_rules.
+From self.mid Require Import rules specialised_rules.
 Require Import ISASem.SailArmInstTypes.
 
 Import uPred.
@@ -68,33 +68,28 @@ Section proof.
     (BV 64 0x2004) ↦ᵢ read "r2" ∗
     (BV 64 0x2008) ↦ᵢ -.
 
-  Definition protocol : UserProt :=
-    Build_UserProt _ _ (λ a v e,
-                         if bool_decide (a = addr) then addr_prot v e
-                         else True)%I.
-
-  #[local] Instance userprot : UserProt := protocol.
-
   Context `{!AAThreadG} `{ThreadGN}.
 
   Lemma writer ctrl:
     None -{LPo}> -∗
     ctrl -{Ctrl}> -∗
     last_local_write 1 addr None -∗
+    Prot[ addr, (1/2)%Qp | addr_prot ] -∗
     instrs_writer -∗
     WPi (LTSI.Normal, (BV 64 0x1000)) @ 1 {{ λ lts', ⌜lts' = (LTSI.Done, (BV 64 0x1004))⌝}}.
   Proof.
-    iIntros "Hpo_src Hctrl_src Hlocalw Hinstrs".
+    iIntros "Hpo_src Hctrl_src Hlocalw Hprot Hinstrs".
     iDestruct "Hinstrs" as "(#? & #?)".
 
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src Hctrl_src Hlocalw]").
+    iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src Hctrl_src Hlocalw Hprot]").
     {
       iApply (istore_pln (λ _, emp)%I ∅ ∅ with "[$Hpo_src $Hctrl_src $Hlocalw]"). iFrame "#∗".
       rewrite big_sepS_empty big_sepM_empty //.
 
+      iExists _,_,emp%I. iSplitL. iIntros "_";iFrame.
       iIntros (?). iSplitL.
       - iIntros "_ _ _". done.
-      - iIntros "#HE % #Hpo _". iModIntro. iSplit;first done. simpl. rewrite /addr_prot. iLeft;done.
+      - iIntros "#HE % #Hpo _ _". iModIntro. iSplit;first done. simpl. rewrite /addr_prot. iLeft;done.
     }
     iIntros (?) "(-> &[% (#Hwrite&%Htid1&Hpo&_&Hlocal&Hctrl&HeidP)])".
     assert (G: ((BV 64 4096) `+Z` 4 = (BV 64 4100))%bv) by bv_solve. rewrite G.
@@ -171,6 +166,7 @@ Section proof.
     ctrl -{Ctrl}> -∗
     None -{Rmw}> -∗
     last_local_write 2 addr None -∗
+    Prot[ addr, (1/2)%Qp | addr_prot ] -∗
     (∃ rv, "r1" ↦ᵣ rv) -∗
     (∃ rv, "r2" ↦ᵣ rv) -∗
     instrs_reader -∗
@@ -181,29 +177,32 @@ Section proof.
                                                         ∨ ⌜r1.(reg_val)  = data ∧ r2.(reg_val) = data⌝)
       }}.
   Proof.
-    iIntros "Hlpo Hctrl Hrmw Hlocalw [% Hr1] [% Hr2] Hinstrs".
+    iIntros "Hlpo Hctrl Hrmw Hlocalw Hprot [% Hr1] [% Hr2] Hinstrs".
     iDestruct "Hinstrs" as "(#? & #? & #?)".
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hr1 Hlpo Hctrl Hrmw Hlocalw]").
+    iDestruct "Hprot" as "[Hprot1 Hprot2]".
+    iApply sswpi_wpi. iApply (sswpi_mono with "[Hr1 Hlpo Hctrl Hrmw Hlocalw Hprot1]").
     {
       iApply (iload_pln _ ∅ ∅ with "[$Hr1 $Hlpo $Hctrl $Hrmw $Hlocalw]"). iFrame "∗#".
       rewrite big_sepM_empty big_sepS_empty //.
 
       iIntros (?). iSplitR.
       - iIntros "_ _". rewrite big_sepM_empty //.
-      - iIntros (??) "_ _ _ _ _ _ #Hprot". iModIntro. iExact "Hprot".
+      - iExists _,_,emp%I. iSplitL. iIntros "_";iFrame.
+        iIntros (??) "_ _ _ _ _ _ _ #Hprot". iModIntro. iFrame "Hprot". iExact "Hprot".
     }
     iIntros (?) "(-> & %&%&%& #He_r1 & %Htid_r1 & Hr1 & Hannot & (% & % & #He_w1) & #Hrf1 & Hlpo & _ & Hctrl & Hrmw & Hlocalw)".
     assert (G: ((BV 64 8192) `+Z` 4 = (BV 64 8196))%bv); [bv_solve|]. rewrite G.
 
     iDestruct (lpo_to_po with "Hlpo") as "[Hlpo #Hpo_r1]".
 
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hr2 Hlpo Hctrl Hrmw Hlocalw]").
+    iApply sswpi_wpi. iApply (sswpi_mono with "[Hr2 Hlpo Hctrl Hrmw Hlocalw Hprot2]").
     {
       iApply (iload_pln _ {[eid]} ∅ with "[$Hr2 $Hlpo $Hctrl $Hrmw $Hlocalw]"). iFrame "∗#".
       { rewrite big_sepM_empty big_sepS_singleton. by iFrame "#". }
       iIntros (?). iSplitR.
       - iIntros "_ _". rewrite big_sepM_empty //.
-      - iIntros (??) "_ _ _ _ _ _ #Hprot". iModIntro. iExact "Hprot".
+      - iExists _,_,emp%I. iSplitL. iIntros "_";iFrame.
+        iIntros (??) "_ _ _ _ _ _ _ #Hprot". iModIntro. iFrame "Hprot". iExact "Hprot".
     }
     iIntros (?) "(-> & % & % & % & #He_r2 & %Htid_r2 & Hr2 & Hannot2 & (%&%&#He_w2) & #Hrf2 & Hlpo & #Hpo_r1_r2 & Hctrl & Hrmw & _)".
     subst. clear G. assert (G: ((BV 64 8196) `+Z` 4 = (BV 64 8200))%bv); [bv_solve|]. rewrite G.
@@ -230,7 +229,7 @@ Section proof.
     iModIntro.
     iSplit;first done.
     iExists _, _. iFrame "Hr1 Hr2".
-    rewrite /prot /= /addr_prot.
+    rewrite /addr_prot.
     iDestruct "HP" as "[[[-> %]|%] [[-> %]|%]]".
     { iRight;done. }
     {
@@ -244,8 +243,6 @@ Section proof.
       iDestruct (initial_write_co with "He_w2 He_w1") as "#Hco";first lia.
       rewrite H4. lia.
       iApply (rf_co_to_fr with "Hrf2 Hco").
-      iExists _,_,_. iFrame "#".
-      iExists _,_,_. iFrame "#".
     }
     {
       iDestruct (initial_write_zero with "He_w1") as %<-;first lia.

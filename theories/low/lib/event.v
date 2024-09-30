@@ -34,14 +34,13 @@
 (*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
 (*                                                                                  *)
 
-Require Import stdpp.unstable.bitvector.
+Require Import stdpp.bitvector.definitions.
 
 From SSCCommon Require Import Common.
 From iris.base_logic Require Import iprop.
 
 From self Require Import stdpp_extra.
 
-From self.algebra Require Import base.
 From self.low.lib Require Import edge.
 
 Module Event.

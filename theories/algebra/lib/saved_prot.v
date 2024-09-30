@@ -34,76 +34,56 @@
 (*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
 (*                                                                                  *)
 
-From self.low.rules Require Import prelude.
+From iris.base_logic.lib Require Import saved_prop.
+From iris.proofmode Require Import proofmode.
 
-Import uPred.
+(* Saved protocol *)
+Notation savedProtG Σ A B := (savedAnythingG Σ (A -d> B -d> ▶ ∙)).
+Notation savedProtΣ A B := (savedAnythingΣ (A -d> B -d> ▶ ∙)).
 
-Section rules.
-  Context `{AAIrisG} `{Htg: !ThreadGNL}.
-  Import ThreadState.
-  Lemma branch_announce {tid : Tid} {ts ctxt addr dep}:
-    ThreadState.ts_reqs ts = AAInter.Next (AAInter.BranchAnnounce addr dep) ctxt ->
-    ⊢
-    SSWP (LThreadState.LTSNormal ts) @ tid {{ λ lts',
-      ⌜lts' = LThreadState.LTSNormal ((incr_cntr ts)
-        <| ts_ctrl_srcs := LThreadStep.deps_of_depon tid ts dep ∪ (ThreadState.ts_ctrl_srcs ts) |>
-        <| ts_reqs := ctxt tt |> ) ⌝
-    }}.
+Section saved_prot.
+  Context `{!savedProtG Σ A B}.
+
+  Definition saved_prot_own (γ : gname) (Φ : A → B -> iProp Σ) :=
+    saved_anything_own (F := A -d> B -d> ▶ ∙) γ (dfrac.DfracDiscarded) (λ a b, Next (Φ a b)).
+
+  Global Instance saved_prot_own_contractive `{!savedProtG Σ A B} γ :
+    Contractive (saved_prot_own γ : (A -d> B -d> iPropO Σ) → iProp Σ).
   Proof.
-    iIntros (Hreqs).
-    rewrite sswp_eq /sswp_def /=.
-    iIntros (????) "H". iNamed "H".
-    inversion Hat_prog as [Hpg]. clear Hat_prog.
-    case_bool_decide as Hv.
-    2: {
-      rewrite (LThreadStep.step_progress_valid_is_reqs_nonempty _ _ _ ts) in Hv; [|done|done].
-      rewrite Hreqs /EmptyInterp /= in Hv. exfalso. apply Hv. congruence.
-    }
-    iIntros (?). iNamed 1.
-
-    inversion_step Hstep.
-
-    iNamed "Hinterp_annot". iDestruct "Hannot_at_prog" as "#Hannot_at_prog".
-    iMod (annot_alloc na (get_progress ts) tid gs emp%I with "[$Hinterp_annot $Hannot_at_prog //]") as "(Hinterp_annot & _)".
-    iMod (token_alloc with "[$Hinterp_token $Hannot_at_prog //]") as "(Hinterp_token & _)".
-
-    iExists emp%I, ∅, ∅, ls.
-    iModIntro. iSplitR. { iApply empty_na_splitting_wf. }
-    iSplitR.
-    (** getting out resources from FE *)
-    {
-      rewrite flow_eq_dyn_unseal /flow_eq_dyn_def.
-      iIntros (??). repeat iNamed 1.
-
-      pose proof (prot_inv_unchanged _ σ s_ob eid Hgraph_wf) as Hprot_inv.
-      iDestruct "Hob_pred_sub" as %Hob_pred_sub.
-      iDestruct "Hob_pred_nin" as %Hob_pred_nin.
-      ospecialize* Hprot_inv.
-      { set_solver + Hv. }
-      { set_solver + Hob_pred_nin. }
-      { set_solver + Hob_pred_sub. }
-      rewrite Hgr_lk /= in Hprot_inv.
-
-      iDestruct (Hprot_inv with "Hob_st") as ">Hob_st".
-
-      iApply step_fupd_intro;first set_solver +.
-      iNext. iExists σ.
-      iFrame.
-    }
-
-    iSplitL "Hinterp_annot Hinterp_token".
-    { rewrite -map_union_assoc map_empty_union insert_union_singleton_l.
-      iFrame. rewrite dom_union_L dom_singleton_L. by iFrame. }
-    
-    iSplitL; last (clear;done).
-    iNamed "Hinterp_local". iSplitL "Hinterp_local_lws".
-    {
-      iApply (last_write_interp_progress_non_write with "Hinterp_local_lws");first reflexivity.
-      intro Hin. erewrite progress_to_node_mk_eid_ii in Hin;last reflexivity.
-      pose proof (AAConsistent.event_is_write_elem_of_mem_writes2 _ Hgraph_wf Hin) as [? [Hlk' HW]].
-      rewrite Hgr_lk in Hlk'. inversion Hlk'. subst x. done.
-    }
-    iApply (po_pred_interp_skip with "Hinterp_po_src");reflexivity.
+    solve_proper_core ltac:(fun _ => first [ intros ??; progress simpl | by auto | f_contractive | f_equiv ]).
   Qed.
 
-End rules.
+  Global Instance saved_prot_persistent γ Φ :
+    Persistent (saved_prot_own γ Φ).
+  Proof. apply _. Qed.
+
+  (** Allocation *)
+  Lemma saved_prot_alloc_strong (I : gname → Prop) (Φ : A → B -> iProp Σ):
+    pred_infinite I →
+    ⊢ |==> ∃ γ, ⌜I γ⌝ ∗ saved_prot_own γ Φ.
+  Proof. intros ?. by apply saved_anything_alloc_strong. Qed.
+
+  Lemma saved_prot_alloc_cofinite (G : gset gname) (Φ : A → B -> iProp Σ):
+    ⊢ |==> ∃ γ, ⌜γ ∉ G⌝ ∗ saved_prot_own γ Φ.
+  Proof. by apply saved_anything_alloc_cofinite. Qed.
+
+  Lemma saved_prot_alloc (Φ : A → B -> iProp Σ) :
+    ⊢ |==> ∃ γ, saved_prot_own γ Φ.
+  Proof. apply saved_anything_alloc. done. Qed.
+
+  (** Validity *)
+  Lemma saved_prot_valid γ Φ Ψ x y :
+    saved_prot_own γ Φ -∗ saved_prot_own γ Ψ -∗ ▷ (Φ x y ≡ Ψ x y).
+  Proof.
+    iIntros "HΦ HΨ".
+    iCombine "HΦ HΨ" gives "(_ & Hag)".
+    iApply later_equivI.
+    iDestruct (discrete_fun_equivI with "Hag") as "Hag'".
+    iSpecialize ("Hag'" $! x).
+    iApply (discrete_fun_equivI with "Hag'").
+  Qed.
+  Lemma saved_prot_agree γ Φ Ψ x y:
+    saved_prot_own γ Φ -∗ saved_prot_own γ Ψ -∗ ▷ (Φ x y ≡ Ψ x y).
+  Proof. iIntros "HΦ HΨ". iPoseProof (saved_prot_valid with "HΦ HΨ") as "$". Qed.
+
+End saved_prot.

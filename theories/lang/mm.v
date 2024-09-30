@@ -35,14 +35,13 @@
 (*                                                                                  *)
 
 (* This file contains the memory model *)
-
-
+(* TODO: compilation of this file is slow, move lemmas to a separate file *)
 From SSCCommon Require Import Common CSets GRel.
 
-Require Import ISASem.SailArmInstTypes.
 
+Require Import ISASem.SailArmInstTypes.
 Require Import stdpp.prelude.
-Require Import stdpp.unstable.bitvector.
+Require Import stdpp.bitvector.definitions.
 
 Require Export self.lang.machine.
 
@@ -153,7 +152,6 @@ Module AAConsistent.
 
   Definition event_is_write_with_addr (event : Event) (a : Addr) :=
     event_is_write_with_P event (λ _ wreq, bool_decide (addr_of_wreq wreq = a)).
-  #[global] Hint Unfold event_is_write_with_addr : all.
 
   Definition event_is_write_with_kind (event : Event) (ks : Access_strength) (kv : Access_variety) :=
     event_is_write_with_P event (λ _ wreq,
@@ -233,7 +231,7 @@ Module AAConsistent.
     destruct Hin as [? [? [? HE]]].
 
     pose proof (mem_wf_spec_write gr H e _ HE).
-    feed specialize H0.
+    ospecialize* H0.
     set_unfold. do 3 eexists. eassumption.
     eexists. split;eauto.
   Qed.
@@ -257,7 +255,7 @@ Module AAConsistent.
     assert (NMSWF.mem_wf gr).
     { rewrite /NMSWF.wf in Hwf. naive_solver. }
     destruct Hin as [? [? [? HE]]].
-    pose proof (mem_wf_spec_write gr H e _ HE). feed specialize H0. set_unfold. do 3 eexists. eassumption.
+    pose proof (mem_wf_spec_write gr H e _ HE). ospecialize* H0. set_unfold. do 3 eexists. eassumption.
     eexists. exists (addr_of_wreq x0). split;eauto.
     simpl. rewrite bool_unfold. simpl in H0. rewrite bool_unfold in H0. clear H HE.
     naive_solver.
@@ -376,7 +374,6 @@ Module AAConsistent.
     hauto lq:on.
   Qed.
 
-
   Lemma event_is_read_with_impl_kind (e : Eid) (event : Event) (ks : Access_strength) (kv : Access_variety) (a : Addr) (v : Val) :
     event_is_read_with event ks kv a v -> event_is_read_with_kind event ks kv.
   Proof.
@@ -385,6 +382,15 @@ Module AAConsistent.
     repeat rewrite ->bool_unfold in *.
     hauto lq:on.
   Qed.
+
+  (* Definition get_pa_val_of_read_or_write (event : Event) := *)
+  (*   match event with *)
+  (*   | AAInter.IEvent (AAInter.MemRead 8 rr) (inl (val, _)) => *)
+  (*       Some (addr_of_rreq rr, val) *)
+  (*   | AAInter.IEvent (AAInter.MemWrite 8 wr) _ => *)
+  (*       Some (addr_of_wreq wr, value_of_wreq wr) *)
+  (*   | _ => None *)
+  (*   end. *)
 
   Definition rel_writes (cd : t) :=
     collect_all event_is_rel cd.
@@ -473,6 +479,7 @@ End AAConsistent.
 (* memory graph *)
 Module Graph.
   Export AACandExec.
+  Export AACandExec.Candidate.
   Export AAConsistent.
   Export NMSWF.
 
@@ -505,6 +512,8 @@ Module Graph.
 
   Definition ind_lob_succ_of (gr : Candidate.t) (e : Eid) :=
     grel_rng (filter (fun '(es,et) => es = e) (ind_lob gr)).
+
+  Definition is_rfe gr e_src e_tgt := ((e_src, e_tgt) ∈ (external_of (gr.(Candidate.rf)))).
 
   Definition obs_pred_of (gr : Candidate.t) (e : Eid) :=
     grel_dom (filter (fun '(es,et) => et = e) (obs gr)).
@@ -562,13 +571,13 @@ Module Graph.
     rewrite /Candidate.get_pa in H2.
     match_inversion;try contradiction;subst;simpl.
     pose proof (mem_wf_spec_read _ Hmwf eid _ H1).
-    feed specialize H. set_unfold. do 3 eexists. eassumption.
+    ospecialize* H. set_unfold. do 3 eexists. eassumption.
     right. rewrite bool_unfold. inversion H2;subst addr.
     simpl in H. rewrite bool_unfold in H. naive_solver.
 
     left. rewrite bool_unfold. inversion H2;subst addr.
     pose proof (mem_wf_spec_write _ Hmwf eid _ H1).
-    feed specialize H. set_unfold. do 3 eexists. eassumption.
+    ospecialize* H. set_unfold. do 3 eexists. eassumption.
     simpl in H. rewrite bool_unfold in H. naive_solver.
   Qed.
 
@@ -613,13 +622,10 @@ Module Graph.
     assert (Hin : e ∈ grel_rng (Candidate.rf gr)).
     { rewrite H3. set_unfold. repeat eexists. eassumption. }
     set_unfold in Hin. destruct Hin as [e_w Hrf].
-    exists e_w. specialize (H e_w). feed specialize H. set_solver + Hrf.
+    exists e_w. specialize (H e_w). ospecialize* H. set_solver + Hrf.
     set_unfold in H. destruct H as (?&?&?&?).
-    (* rewrite bool_unfold in H5. destruct H5 as [? ?]. rewrite /Candidate.wreq_is_valid in H5. *)
-    (* case_match; try contradiction. destruct e0. *)
     specialize (H0 (e_w,e) Hrf).
     set_unfold in H0.
-
 
     destruct H0 as [(?&?&?&Hlk1&?&Hlk2&?) (?&?&?&Hlk1'&?&Hlk2'&?)].
     rewrite Hlk1 in Hlk1'. rewrite Hlk2 in Hlk2'.
@@ -629,7 +635,7 @@ Module Graph.
     inversion H;subst x2;clear H. inversion Hlk;subst x3;clear Hlk.
 
     pose proof (mem_wf_spec_write _ Hwf_mem _ _ Hlk1).
-    feed specialize H.
+    ospecialize* H.
     set_unfold. do 3 eexists. eassumption. simpl in H. rewrite bool_unfold in H. destruct H as [[ ? ?] |];last done.
     rewrite /Candidate.wreq_is_valid in H.
     match_inversion;[| contradiction | contradiction | contradiction ].
@@ -732,7 +738,7 @@ Module Graph.
       split. set_unfold. sauto lq:on.
       intros Heq.
       set_unfold.
-      specialize (H14 eid). feed specialize H14. sauto lq:on.
+      specialize (H14 eid). ospecialize* H14. sauto lq:on.
       clear H2.
       sauto.
     }
@@ -1706,7 +1712,6 @@ Module Graph.
     destruct_and ? Hpo.
     clear H8 H11 H0 H1 H3 H4 H5 H6 H2.
 
-
     assert (grel_rng (filter (λ '(es, _), es = e) (Candidate.po gr)) = ∅).
     {
       clear Hwf.
@@ -1728,6 +1733,143 @@ Module Graph.
     set_solver + H0 H1.
   Qed.
 
+  (* initial writes has no [lob] predecessors *)
+  Lemma no_lob_pred_initial gr e:
+    NMSWF.wf gr ->
+    AAConsistent.t gr ->
+    e ∈ Candidate.initials gr -> lob_pred_of gr e = ∅.
+  Proof.
+    intros Hwf Hcs ?.
+    assert (initial_wf gr) as Hinit by (rewrite /wf in Hwf;naive_solver).
+    rewrite /initial_wf in Hinit.
+    destruct_and ? Hinit.
+    rewrite /lob_succ_of.
+    assert (po_wf gr) as Hpo by (rewrite /wf in Hwf;naive_solver).
+    rewrite /po_wf in Hpo.
+    destruct_and ? Hpo.
+    clear H8 H11 H0 H1 H3 H4 H5 H6 H2.
+
+    assert (grel_dom (filter (λ '(_,es), es = e) (Candidate.po gr)) = ∅).
+    {
+      clear Hwf.
+      set_unfold.
+      intros. apply Classical_Pred_Type.all_not_not_ex.
+      intros. intro.
+      destruct H0 as [<- ?].
+      assert ((n, x) ∈ Candidate.sthd gr).
+      {
+        apply H10. simpl. left. right;done.
+      }
+      set_unfold.
+      sauto lq:on.
+    }
+
+    pose proof (lob_subseteq_po _ Hwf Hcs).
+    Local Opaque lob.
+    set_unfold.
+    set_solver + H0 H1.
+  Qed.
+
+  (* initial writes has no [ob] predecessors *)
+  Lemma no_ob_pred_initial_aux gr e:
+    NMSWF.wf gr ->
+    AAConsistent.t gr ->
+    e ∈ Candidate.initials gr -> grel_dom (filter (λ '(_, et), et = e) (obs gr ∪ lob gr)) = ∅ .
+  Proof.
+    intros Hwf Hcs ?.
+    assert (initial_wf gr) as Hinit by (rewrite /wf in Hwf;naive_solver).
+    rewrite /initial_wf in Hinit.
+    destruct_and ? Hinit.
+
+    pose proof (no_lob_pred_initial gr e Hwf Hcs H) as Hnlob.
+    rewrite H3 in H. clear H1 H2 H3 H4.
+    Local Opaque lob.
+    rewrite filter_union_L.
+    rewrite grel_dom_union.
+    unfold lob_pred_of in Hnlob. rewrite Hnlob.
+
+    rewrite union_empty_r_L.
+
+    unfold obs.
+
+    assert (grel_dom (filter (λ '(_, es), es = e) (rf gr)) = ∅).
+    {
+      assert (rf_wf gr) as Hrf by (rewrite /wf in Hwf;naive_solver).
+      rewrite /rf_wf in Hrf. clear Hwf. rewrite bool_unfold in Hrf.
+      destruct Hrf as [[[_ Hrf_rng] _] _].
+      clear H5 Hnlob Hcs.
+      set_unfold.
+      intros. intro.
+      destruct H0 as [? [-> Hrf]].
+      specialize (Hrf_rng e).
+      destruct Hrf_rng as [Hrf_rng _].
+      ospecialize* Hrf_rng. eexists;eassumption.
+      destruct H as [_ H].
+      destruct H as (?&?&?&Hlk).
+      destruct Hrf_rng as (?&?&?&Hlk').
+      rewrite Hlk' in Hlk. inversion Hlk.
+    }
+    assert (grel_dom (filter (λ '(_, es), es = e) (co gr)) = ∅).
+    {
+      assert (co_wf gr) as Hco by (rewrite /wf in Hwf;naive_solver).
+      rewrite /co_wf in Hco. clear Hwf. rewrite bool_unfold in Hco.
+      destruct Hco as [[[[_ Hco_dom] _] _] _].
+      clear H5 H0 Hnlob Hcs.
+      set_unfold.
+      intros. intro.
+      destruct H0 as [? [-> Hco]].
+      apply H.
+      exists x. split;[|assumption].
+      destruct H.
+      set_unfold. apply Hco_dom.
+      eexists;eassumption.
+    }
+    rewrite !filter_union_L.
+    rewrite !grel_dom_union.
+    assert (grel_dom (filter (λ '(_, et), et = e) (external_of (rf gr))) = ∅) as ->.
+    {
+      clear - H0. set_unfold. hauto.
+    }
+    assert (grel_dom (filter (λ '(_, et), et = e) (external_of (co gr))) = ∅) as ->.
+    {
+      clear - H1. set_unfold. hauto.
+    }
+    assert (grel_dom (filter (λ '(_, et), et = e) (external_of (fr gr))) = ∅) as ->.
+    {
+      clear - H1. set_unfold. hauto.
+    }
+    set_solver +.
+  Qed.
+
+
+  Lemma no_ob_pred_initial gr e:
+    NMSWF.wf gr ->
+    AAConsistent.t gr ->
+    e ∈ Candidate.initials gr -> grel_dom (filter (λ '(_, et), et = e) (ob gr)) = ∅ .
+  Proof.
+    intros Hwf Hcs Hi.
+    Local Opaque lob obs.
+    unfold ob. set_unfold. intros.
+    intros [? [<- Hin]].
+    revert Hi.
+    cinduction Hin using grel_plus_cind_r.
+    {
+      intros.
+      pose proof (no_ob_pred_initial_aux gr y Hwf Hcs).
+      set_unfold in H0.
+      ospecialize * H0. assumption.
+      eexists. split;[reflexivity|].
+      set_unfold in H. eassumption. assumption.
+    }
+    {
+      intros.
+      pose proof (no_ob_pred_initial_aux gr z Hwf Hcs).
+      set_unfold in H2.
+      ospecialize * H2. assumption.
+      eexists. split;[reflexivity|].
+      set_unfold in H0. eassumption. assumption.
+    }
+  Qed.
 
   (* [ob] predecessors of [e] is its [lob] predecessors disjoint union its [obs] predecessors *)
   Lemma ob_pred_of_disj_union (gr : Candidate.t) (e : Eid):
@@ -2344,199 +2486,5 @@ Module Graph.
     rewrite -H7 in H. rewrite H9 in H.
     hauto lq:on.
   Qed.
-
-  (** Induction scheme*)
-  (* This is weaker in the sense that nodes in [s] can be ordered *)
-  Definition ob_semi_last_set gr (s s' : gset Eid) :=
-    set_Forall (λ e_last, set_Forall (λ e, (e_last, e) ∉ (AAConsistent.ob gr)) (s' ∖ s)) s.
-
-  Definition ob_subset gr (s' s : gset Eid) : Prop := s' ⊂ s ∧ ob_semi_last_set gr s' s.
-
-  Lemma ob_semi_last_set_mono gr (s s' s'' : gset Eid) :
-    s ⊂ s' -> s' ⊆ s'' ->
-    ob_semi_last_set gr s s'  -> ob_semi_last_set gr s' s'' -> ob_semi_last_set gr s s''.
-  Proof.
-    intros Hsub Hsub' Hob Hob'.
-    apply set_subseteq_inv_L in Hsub'.
-    destruct Hsub' as [Hsub'| ->];last done.
-    intros x Hin.
-    specialize (Hob x Hin). simpl in Hob.
-    intros x'' Hin''.
-    destruct (decide (x'' ∈ s')).
-    - intro.
-      specialize (Hob x'').
-      feed specialize Hob. set_solver + e Hin'' Hsub Hsub'.
-      done. done.
-    - rewrite /ob_semi_last_set in Hob'.
-      destruct (decide (x ∈ s')).
-    + specialize (Hob' x).
-      feed specialize Hob'. set_solver + e.
-      simpl in Hob'.
-      apply Hob'.
-      set_solver + Hin'' n.
-    + set_solver + Hsub n0 Hin.
-  Qed.
-
-  Lemma ob_subset_wf gr : well_founded.wf (ob_subset gr).
-  Proof.
-    apply (wf_projected (<)%nat size).
-    - intros ?? (? & _).
-      by apply subset_size.
-    - apply lt_wf.
-  Qed.
-
-  Definition get_ob_first gr (s : gset Eid) :=
-    filter (λ e, set_Forall (λ e', (e', e) ∉ (AAConsistent.ob gr)) s) s.
-
-  Lemma get_ob_first_subseteq gr s :
-    get_ob_first gr s ⊆ s.
-  Proof.
-    intros ? Hin.
-    apply elem_of_filter in Hin.
-    destruct Hin;done.
-  Qed.
-
-  Lemma get_ob_first_non_empty gr s :
-    AAConsistent.t gr ->
-    s ⊆ Candidate.valid_eid gr ->
-    (exists x, x ∈ s) ->
-    exists x, x ∈ get_ob_first gr s.
-  Proof.
-    intros Hcs.
-    eapply (well_founded_induction _
-              (λ s, s ⊆ Candidate.valid_eid gr → (∃ x : Eid, x ∈ s) → ∃ x : Eid, x ∈ get_ob_first gr s)).
-    Unshelve.
-    2: { exact (⊂). }
-    2 : {
-      eapply (wf_projected (<)%nat size).
-      - intros ??. apply subset_size.
-      - apply lt_wf.
-    }
-    clear s. intros s IH Hsub Hnem.
-    destruct Hnem as [x Hin].
-    destruct (decide (x ∈ get_ob_first gr s));[exists x;done|].
-    rewrite /get_ob_first elem_of_filter in n. rewrite not_and_l in n.
-    destruct n; last set_solver + H Hin Hsub.
-    apply not_set_Forall_Exists in H. 2: apply _.
-    destruct H as [x0 [Hin' Hob]].
-    assert (x0 ≠ x).
-    {
-      intros ->. destruct Hcs as [_ Hac].
-      rewrite grel_irreflexive_spec in Hac.
-      simpl in Hob. apply Hob.
-      intro Hxx. specialize (Hac (x, x) Hxx). done.
-    }
-    specialize (IH (s∖ {[x]})). feed specialize IH.
-    set_solver + Hin.
-    set_solver + Hsub.
-    exists x0. set_solver + H Hin Hin'.
-    destruct IH as [x2 ?].
-    destruct (decide ((x, x2) ∈ (ob gr))).
-    {
-      apply elem_of_filter in H0.
-      destruct H0.
-      assert (x0 ∈ s ∖ {[x]}) by set_solver + H Hin'.
-      specialize (H0 x0 H2).
-      simpl in H0. simpl in Hob.
-      assert ((x0, x) ∈ ob gr).
-      destruct (decide ((x0, x) ∈ ob gr)). done.
-      exfalso. apply Hob. done.
-      exfalso. apply H0.
-      pose proof (grel_transitive_spec (ob gr)) as [Htran _].
-      feed specialize Htran.
-      apply grel_transitive_plus. eapply Htran;eauto.
-    }
-    {
-      exists x2. apply elem_of_filter.
-      split. 2:{ apply elem_of_filter in H0. destruct H0. set_solver + H1. }
-      rewrite (union_difference_L {[x]} s); first set_solver + Hin.
-      apply set_Forall_union.
-      apply set_Forall_singleton. done.
-      apply elem_of_filter in H0. destruct H0. done.
-    }
-  Qed.
-
-  Lemma ob_semi_last_set_choose_or_empty gr s:
-    AAConsistent.t gr ->
-    s ⊆ Candidate.valid_eid gr ->
-    (∃ x, x ∈ s ∧ ob_semi_last_set gr (s ∖ {[x]}) s) ∨ s ≡ ∅.
-  Proof.
-    intros Hcs Hsub.
-    destruct (set_choose_or_empty (get_ob_first gr s)) as [[x Hx_in]|HX].
-    - left. exists x.
-      apply elem_of_filter in Hx_in.
-      destruct Hx_in as (Hlast & Hin ).
-      split;first done.
-      intros y Hy_in.
-      assert (Hy_in' : y ∈ s) by set_solver + Hy_in.
-      specialize (Hlast y Hy_in').
-      assert ((s ∖ (s ∖ {[x]})) = {[x]}) as ->.
-      rewrite difference_difference_r_L.
-      set_solver + Hin.
-      apply set_Forall_singleton. done.
-    - destruct (set_choose_or_empty s) as [[y Hy_in]|HY].
-      + exfalso.
-        pose proof (get_ob_first_non_empty gr s Hcs Hsub) as Hnem.
-        feed specialize Hnem. exists y;done.
-        set_solver + Hnem HX.
-      + right;done.
-  Qed.
-
-  Lemma ob_set_ind (gr : Graph.t) (s_all : gset Eid) (P : gset Eid → Prop) :
-    Proper ((≡) ==> iff) P →
-    AAConsistent.t gr ->
-    s_all ⊆ (Candidate.valid_eid gr) ->
-    P ∅ →
-    (∀ (x : Eid) (X : gset Eid), x ∉ X -> x ∈ s_all ->
-                                 ob_subset gr X s_all ->
-                                 set_Forall (λ x', (x', x) ∉ (AAConsistent.ob gr)) ({[x]} ∪ X) →
-                                 P X → P ({[ x ]} ∪ X)) →
-    ∀ X, X ⊆ s_all -> ob_semi_last_set gr X s_all -> P X.
-  Proof.
-    intros ? Hcs Hall_valid Hemp Hadd.
-    eapply (well_founded_induction _ (λ X, X ⊆ s_all -> ob_semi_last_set gr X s_all → P X)).
-    Unshelve.
-    2:{ exact (ob_subset gr). }
-    2:{ apply ob_subset_wf. }
-    intros X IH HX_subeq HX_semi_first.
-    assert (HX_valid: X ⊆ Candidate.valid_eid gr) by set_solver + HX_subeq Hall_valid.
-    destruct (ob_semi_last_set_choose_or_empty gr X Hcs HX_valid) as [[x [Hx_in HX_x_semi_first]]|HX].
-    - rewrite (union_difference {[x]} X);[set_solver + Hx_in|].
-      apply Hadd;[set_solver + | set_solver + Hx_in  HX_subeq | | |].
-      {
-        split. set_solver + Hx_in HX_subeq.
-        eapply ob_semi_last_set_mono;eauto.
-        set_solver + Hx_in HX_subeq.
-      }
-      {
-        apply set_Forall_union.
-        {
-          rewrite set_Forall_singleton.
-          destruct Hcs as [_ Hac].
-          rewrite grel_irreflexive_spec in Hac.
-          intro Hxx. specialize (Hac (x, x) Hxx). done.
-        }
-        {
-          intros x0 Hx0_in.
-          apply (HX_x_semi_first x0 Hx0_in).
-          set_solver + Hx_in.
-        }
-      }
-      apply IH.
-      split. set_solver + Hx_in. done.
-      set_solver + HX_subeq.
-        eapply ob_semi_last_set_mono;eauto.
-        set_solver + Hx_in.
-    - by rewrite HX.
-  Qed.
-
-  Lemma ob_set_ind_L (gr : Graph.t) (s_all : gset Eid) (P : gset Eid → Prop) :
-    AAConsistent.t gr ->
-    s_all ⊆ (Candidate.valid_eid gr) ->
-    P ∅ → (∀ (x : Eid) (X : gset Eid), x ∉ X -> x ∈ s_all ->
-                                       ob_subset gr X s_all ->
-                                       set_Forall (λ x', (x', x) ∉ (AAConsistent.ob gr)) ({[x]} ∪ X) →
-                  P X → P ({[ x ]} ∪ X)) → ∀ X, X ⊆ s_all -> ob_semi_last_set gr X s_all -> P X.
-  Proof. apply ob_set_ind. by intros ?? ->%leibniz_equiv_iff. Qed.
 
 End Graph.

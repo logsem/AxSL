@@ -1,8 +1,8 @@
 (*                                                                               *)
 (*  BSD 2-clause License                                                         *)
 (*                                                                               *)
-(*  This applies to all files in this archive except where                       *)
-(*  specified otherwise.                                                         *)
+(*  This applies to all files in this archive except folder                      *)
+(*  "armv9-instantiation-types" or where specified otherwise.                    *)
 (*                                                                               *)
 (*  Copyright (c) 2022                                                           *)
 (*    Thibaut Pérami                                                             *)
@@ -41,8 +41,8 @@
     The module will attempt to provide smooth interoperability between the two *)
 
 Require Import Lia.
-Require Export stdpp.unstable.bitvector.
-Require Export stdpp.unstable.bitvector_tactics.
+Require Export stdpp.bitvector.definitions.
+Require Export stdpp.bitvector.tactics.
 Require Export bbv.Word.
 Require Import CBase.
 Require Import CBool.
@@ -450,6 +450,7 @@ Ltac remove_words :=
 (* Full bitvector simplification for both word and bv, contrary to bv_simplify,
    it does not move the goal to Z. Equalities in bv will stay in bv *)
 Ltac bv_word_simp :=
+  (* TODO maybe move to rewrite_strat if quantifier rewriting is needed *)
   repeat (autorewrite with bv word transport arith in *;
           try bv_to_word_to_bv;
           try word_to_bv_to_word).
@@ -492,6 +493,9 @@ Ltac bv_word_solve :=
   | H : _ ≠@{?T} _ |- _ => (eunify T (bv _) + eunify T (word _)); exfalso
   end; bv_word_solve'.
 
+
+
+(* TODO improve performance *)
 
 (*** Convert word operation to bv operations ***)
 
@@ -557,6 +561,7 @@ Qed.
 
 
 (* This section might be upstreamed to stdpp. *)
+(* TODO add bv_solve support for this section *)
 
 (* Give minimal number of block of size n to cover m
 

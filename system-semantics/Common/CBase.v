@@ -1,8 +1,8 @@
 (*                                                                               *)
 (*  BSD 2-clause License                                                         *)
 (*                                                                               *)
-(*  This applies to all files in this archive except where                       *)
-(*  specified otherwise.                                                         *)
+(*  This applies to all files in this archive except folder                      *)
+(*  "armv9-instantiation-types" or where specified otherwise.                    *)
 (*                                                                               *)
 (*  Copyright (c) 2022                                                           *)
 (*    Thibaut Pérami                                                             *)
@@ -52,7 +52,7 @@ Require Import ZArith.
 
 (** Functional pipe notation.
 
-    Currently parsing level is just below relation so
+    TODO figure out a correct parsing level. Currently is just below relation so
     that a = b |> f will be parsed as a = (b |> f). *)
 Notation "v |> f" := (f v) (at level 69, only parsing, left associativity).
 

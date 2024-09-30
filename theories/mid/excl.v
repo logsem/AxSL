@@ -42,13 +42,12 @@ From iris.proofmode Require Import tactics.
 From iris.base_logic.lib Require Export invariants.
 
 From self Require Import stdpp_extra.
-From self.low Require Import instantiation.
-From self.lang Require Export mm.
+From self.low.lib Require Import edge event.
 
 Import uPred.
 
 Section definition.
-  Context `{AAIrisG}.
+  Context `{CMRA Σ} `{!AABaseG} `{invGS_gen HasNoLc Σ}.
 
   Definition excl_inv_name (eid_w : EID.t) := (nroot .@ (encode eid_w)).
 
@@ -58,7 +57,7 @@ Section definition.
 End definition.
 
 Section rules.
-  Context `{AABaseG Σ}.
+  Context `{CMRA Σ} `{!AABaseG}.
 
   Lemma rmw_is_bij a b c:
     b ≠ c ->
@@ -100,6 +99,7 @@ Section rules.
 
   Lemma excl_inv_open_succ `{!invGS_gen HasNoLc Σ} eid_w eid_xr eid_xw E P :
     ↑(excl_inv_name eid_w) ⊆ E ->
+    (* FIXME: external rf or lob *)
     (Tok{ eid_xw } ∗ eid_w -{Edge.Rf}> eid_xr ∧ ⌜EID.tid eid_w ≠ EID.tid eid_xr⌝ ∗ eid_xr -{(Edge.Rmw)}> eid_xw ∗
      excl_inv eid_w P)
        ={E, E ∖ ↑(excl_inv_name eid_w)}=∗ ▷ (P eid_w ∗ |={E ∖ ↑(excl_inv_name eid_w),E}=> emp).

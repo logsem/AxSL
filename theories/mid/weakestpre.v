@@ -80,7 +80,7 @@ Definition to_lts_Phi `{CMRA Σ} `{!irisGInst} (Φ : LTSI.t -> iProp Σ)
   end.
 
 
-Definition wpi_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!Protocol} `{!irisGInst}
+Definition wpi_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!irisGInst}
   (tid: Tid) (ltsi : LTSI.t) (Φ : LTSI.t -> iProp Σ) : iProp Σ :=
   (∀ (ts : ThreadState.t),
      "%PC" ∷ ⌜inst_addr_is ltsi.2 ts⌝ -∗
@@ -90,8 +90,8 @@ Definition wpi_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!P
 Definition wpi_aux : seal (@wpi_def). Proof. by eexists. Qed.
 Definition wpi := wpi_aux.(unseal).
 
-Arguments wpi {Σ _ _ _ _ _ _}.
-Lemma wpi_eq `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!Protocol} `{!irisGInst} : wpi = @wpi_def Σ _ _ _ _ _ _.
+Arguments wpi {Σ _ _ _ _ _}.
+Lemma wpi_eq `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!irisGInst} : wpi = @wpi_def Σ _ _ _ _ _.
 Proof. rewrite -wpi_aux.(seal_eq) //. Qed.
 
 Notation "'WPi' m @ id {{ Φ } }" := (wpi id m Φ)
@@ -101,7 +101,7 @@ Notation "'WPi' m @ id {{ v , Q } }" := (wpi id m (λ v, Q))
                                           (at level 20, m, Q at level 200,
                                              format "'[' 'WPi'  m  '/' '[       ' @  id   {{  v ,  Q  } } ']' ']'") : bi_scope.
 
-Definition sswpi_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!Protocol} `{!irisGInst}
+Definition sswpi_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!irisGInst}
   (tid: Tid) (ltsi : LTSI.t) (Φ : LTSI.t -> iProp Σ) : iProp Σ :=
   (∀ Ψ,
      "Hcont" ∷ (∀ ltsi', Φ ltsi' -∗ (WPi ltsi' @ tid {{ ltsi, Ψ ltsi}})) -∗
@@ -110,8 +110,8 @@ Definition sswpi_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{
 Definition sswpi_aux : seal (@sswpi_def). Proof. by eexists. Qed.
 Definition sswpi := sswpi_aux.(unseal).
 
-Arguments sswpi {Σ _ _ _ _ _ _}.
-Lemma sswpi_eq `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!Protocol} `{!irisGInst}: sswpi = @sswpi_def Σ _ _ _ _ _ _.
+Arguments sswpi {Σ _ _ _ _ _}.
+Lemma sswpi_eq `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} `{!irisGInst}: sswpi = @sswpi_def Σ _ _ _ _ _.
 Proof. rewrite -sswpi_aux.(seal_eq) //. Qed.
 
 Notation "'SSWPi' i @ id {{ Φ } }" := (sswpi id i Φ)
@@ -126,7 +126,6 @@ Section wpi.
   Context `{!invGS_gen HasNoLc Σ}.
   Context `{!irisG}.
   Context `{!irisGL}.
-  Context `{!Protocol}.
   Context `{!irisGInst}.
   Implicit Types Φ : LTSI.t → iProp Σ.
   Implicit Types s : LTSI.t.
@@ -313,6 +312,7 @@ Section wpi.
 
   Lemma wpi_step_iupd id s P Φ :
     (|=i=> P) -∗
+    (* XXX: stronger one with |=i=> ? *)
     WPi s @ id {{ k, P ==∗ Φ k }} -∗
                WPi s @ id {{ Φ }}.
   Proof.
@@ -512,7 +512,6 @@ Section proofmode_classes.
   Context `{!irisG}.
   Context `{!irisGL}.
   Context `{!irisGInst}.
-  Context `{!Protocol}.
   Implicit Types P Q : iProp Σ.
   Implicit Types Φ : LTSI.t → iProp Σ.
   (* Implicit Types E : coPset. *)

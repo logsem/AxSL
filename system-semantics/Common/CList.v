@@ -1,8 +1,8 @@
 (*                                                                               *)
 (*  BSD 2-clause License                                                         *)
 (*                                                                               *)
-(*  This applies to all files in this archive except where                       *)
-(*  specified otherwise.                                                         *)
+(*  This applies to all files in this archive except folder                      *)
+(*  "armv9-instantiation-types" or where specified otherwise.                    *)
 (*                                                                               *)
 (*  Copyright (c) 2022                                                           *)
 (*    Thibaut Pérami                                                             *)
@@ -52,6 +52,8 @@ Qed.
 
 
 (*** List simplification ***)
+
+(* TODO all list simplification about x ∈ l should be superseded by set_unfold *)
 
 (** Automation for list simplifications *)
 Tactic Notation "list_simp" "in" "|-*" :=
@@ -104,6 +106,7 @@ Qed.
 Lemma Permutation_elem_of A (l l' : list A) x: l ≡ₚ l' → x ∈ l → x ∈ l'.
 Proof. setoid_rewrite elem_of_list_In. apply Permutation_in. Qed.
 
+(* TODO add some standard proof search for NoDup *)
 Global Instance set_unfold_list_permutation A (l l' : list A) P Q:
   TCFastDone (NoDup l) ->
   TCFastDone (NoDup l') ->
@@ -162,6 +165,7 @@ Qed.
 
 (*** List as sets ***)
 
+(* TODO make a PR to stdpp with this: *)
 Global Instance list_omap : OMap listset := λ A B f '(Listset l),
     Listset (omap f l).
 

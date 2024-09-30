@@ -213,7 +213,6 @@ Section lemmas.
     rewrite view_frag_validN gmap_view_ag_rel_exists singleton_op singleton_validN.
     by rewrite to_agree_op_validN.
   Qed.
-
   Lemma gmap_view_ag_frag_op_valid k v1 v2 :
     ✓ (gmap_view_ag_frag k v1 ⋅ gmap_view_ag_frag k v2) ↔ v1 ≡ v2.
   Proof.
@@ -221,7 +220,8 @@ Section lemmas.
     rewrite -cmra_valid_validN singleton_op singleton_valid.
     by rewrite to_agree_op_valid.
   Qed.
-
+  (* FIXME: Having a [valid_L] lemma is not consistent with [auth] and [view]; they
+     have [inv_L] lemmas instead that just have an equality on the RHS. *)
   Lemma gmap_view_ag_frag_op_valid_L `{!LeibnizEquiv V} k v1 v2 :
     ✓ (gmap_view_ag_frag k v1 ⋅ gmap_view_ag_frag k v2) ↔ v1 = v2.
   Proof. unfold_leibniz. apply gmap_view_ag_frag_op_valid. Qed.

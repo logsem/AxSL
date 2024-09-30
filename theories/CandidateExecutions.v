@@ -271,13 +271,16 @@ Module CandidateExecutions (Arch : Arch) (IA : InterfaceT Arch). (* to be import
         | _ => false
       end.
 
+    (* valid means the write has real effects *)
     Definition wresp_is_valid (o : option bool + abort) :=
       match o with
+      (* either a write without response (i.e. normal write).
+       or is a successful exclusive write *)
       | inl None | inl (Some true) => true
       | _ => false
       end.
 
-    Definition rresp_is_valid {n} (o : bitvector.bv (8 * n) * option bool + abort) :=
+    Definition rresp_is_valid {n} (o : bv (8 * n) * option bool + abort) :=
       match o with
       | inl _ => true
       | _ => false
@@ -605,7 +608,7 @@ Module CandidateExecutions (Arch : Arch) (IA : InterfaceT Arch). (* to be import
       split.
       - intros [|(?&?&Hfold&?)];first done.
         pose proof (lookup_total_unfold_event_list_fold cd (λ _ event, get_pa event) ∅ x).
-        feed specialize H0.
+        ospecialize* H0.
         intros. rewrite lookup_total_empty.
         set_solver +.
         rewrite lookup_total_empty, union_empty_l_L in H0.
@@ -622,7 +625,7 @@ Module CandidateExecutions (Arch : Arch) (IA : InterfaceT Arch). (* to be import
         exists x1. eexists.
         split.
         + pose proof (lookup_total_unfold_event_list_fold cd (λ _ event, get_pa event) ∅ x1).
-          feed specialize H1.
+          ospecialize* H1.
           intros. rewrite lookup_total_empty.
           set_solver +.
           rewrite lookup_total_empty, union_empty_l_L in H1.
@@ -652,7 +655,7 @@ Module CandidateExecutions (Arch : Arch) (IA : InterfaceT Arch). (* to be import
       split.
       - intros [|(?&?&Hfold&?)];first done.
         pose proof (lookup_total_unfold_event_list_fold cd (λ eid _, Some (eid.(EID.tid))) ∅ x).
-        feed specialize H0.
+        ospecialize* H0.
         intros. rewrite lookup_total_empty.
         set_solver +.
         rewrite lookup_total_empty, union_empty_l_L in H0.
@@ -668,7 +671,7 @@ Module CandidateExecutions (Arch : Arch) (IA : InterfaceT Arch). (* to be import
         exists x1. eexists.
         split.
         + pose proof (lookup_total_unfold_event_list_fold cd (λ eid _, Some (eid.(EID.tid))) ∅ x1).
-          feed specialize H1.
+          ospecialize* H1.
           intros. rewrite lookup_total_empty.
           set_solver +.
           rewrite lookup_total_empty, union_empty_l_L in H1.
@@ -806,7 +809,7 @@ Module CandidateExecutions (Arch : Arch) (IA : InterfaceT Arch). (* to be import
       split;last done.
       rewrite elem_of_seq.
       pose proof (num_of_thd_spec gr t0).
-      feed specialize H3.
+      ospecialize* H3.
       set_unfold. hauto.
       rewrite <- Hsz in H3.
       lia.
@@ -891,7 +894,7 @@ Module CandidateExecutions (Arch : Arch) (IA : InterfaceT Arch). (* to be import
       split.
       - intros [|(?&?&Hfold&?)];first done.
         pose proof (lookup_total_unfold_event_list_fold cd (λ _ event, get_val event) ∅ x).
-        feed specialize H0.
+        ospecialize* H0.
         intros. rewrite lookup_total_empty.
         set_solver +.
         rewrite lookup_total_empty, union_empty_l_L in H0.
@@ -908,7 +911,7 @@ Module CandidateExecutions (Arch : Arch) (IA : InterfaceT Arch). (* to be import
         exists x1. eexists.
         split.
         + pose proof (lookup_total_unfold_event_list_fold cd (λ _ event, get_val event) ∅ x1).
-          feed specialize H1.
+          ospecialize* H1.
           intros. rewrite lookup_total_empty.
           set_solver +.
           rewrite lookup_total_empty, union_empty_l_L in H1.

@@ -1,8 +1,8 @@
 (*                                                                               *)
 (*  BSD 2-clause License                                                         *)
 (*                                                                               *)
-(*  This applies to all files in this archive except where                       *)
-(*  specified otherwise.                                                         *)
+(*  This applies to all files in this archive except folder                      *)
+(*  "armv9-instantiation-types" or where specified otherwise.                    *)
 (*                                                                               *)
 (*  Copyright (c) 2022                                                           *)
 (*    Thibaut Pérami                                                             *)
@@ -38,7 +38,7 @@
 (*                                                                               *)
 
 Require Import Strings.String.
-Require Import stdpp.unstable.bitvector.
+Require Import stdpp.bitvector.definitions.
 Require Import stdpp.strings.
 Require Import stdpp.base.
 Require Import stdpp.countable.

@@ -37,7 +37,7 @@
 (** This file includes our instantiation of [CandidateExecutions],
     and wrappers for types of [system-semantics-coq] *)
 Require Import stdpp.strings.
-Require Import stdpp.unstable.bitvector.
+Require Import stdpp.bitvector.definitions.
 
 Require Export self.CandidateExecutions.
 Require Import ISASem.Interface.
@@ -60,7 +60,9 @@ Module AAArch <: Arch.
   Definition pa := val.
   Definition pa_eq : EqDecision pa := _.
   Definition pa_countable : @Countable pa pa_eq := _.
+  (* XXX extra types, not sure about it *)
   Definition arch_ak := unit.
+  (* XXX what is this? *)
   Definition translation := unit.
   Inductive dmb_kind := | Sy | Ld | St.
   Inductive barrier_type :=

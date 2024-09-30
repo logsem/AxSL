@@ -43,7 +43,7 @@ Section rules.
   Context `{AAIrisG} `{Htg: !ThreadGNL}.
   Import ThreadState.
 
-  Lemma reg_write `{!UserProt} {tid : Tid} {ts ctxt b reg o_dep val}:
+  Lemma reg_write {tid : Tid} {ts ctxt b reg o_dep val}:
     ThreadState.ts_reqs ts = AAInter.Next (AAInter.RegWrite reg b o_dep val) ctxt ->
     ⊢
     SSWP (LThreadState.LTSNormal ts) @ tid {{ λ lts',
@@ -58,8 +58,8 @@ Section rules.
     inversion Hat_prog as [Hpg].  clear Hat_prog.
     case_bool_decide as Hv.
     2:{
-      rewrite (LThreadStep.step_progress_valid_is_reqs_nonempty _ _ _ ts) in Hv;[|done|done].
-      rewrite Hreqs /EmptyInterp /= in Hv. exfalso. by apply Hv.
+      rewrite (LThreadStep.step_progress_valid_is_reqs_nonempty _ _ _ ts) in Hv; [|reflexivity|eassumption].
+      rewrite Hreqs /EmptyInterp /= in Hv. exfalso. apply Hv. congruence.
     }
     iIntros (?). iNamed 1.
 
@@ -74,34 +74,44 @@ Section rules.
     iMod (token_alloc with "[$Hinterp_token $Hannot_at_prog //]") as "(Hinterp_token & _)".
 
     iExists emp%I, ∅, ∅, ls.
-    iModIntro. iSplitR; [iSplitR |]. { by iApply empty_na_splitting_wf. }
-
+    iModIntro. iSplitR. { iApply empty_na_splitting_wf. }
+    iSplitR.
     (** getting out resources from FE *)
     {
-      repeat iNamed 1. iApply step_fupd_intro;first auto.
-      rewrite /prot_node /=. erewrite progress_to_node_mk_eid_ii;last reflexivity. iNext.
+      rewrite flow_eq_dyn_unseal /flow_eq_dyn_def.
+      iIntros (??). repeat iNamed 1.
 
-      iSplitL. iModIntro. iIntros (????) "E_W'".
-      iDestruct (graph_event_agree with "Hinterp_global E_W'") as %Heq.
-      destruct Heq as [? [Hlk ?]].
-      rewrite Hlk in Hgr_lk. inversion Hgr_lk. subst x. contradiction. done.
+      pose proof (prot_inv_unchanged _ σ s_ob eid Hgraph_wf) as Hprot_inv.
+      iDestruct "Hob_pred_sub" as %Hob_pred_sub.
+      iDestruct "Hob_pred_nin" as %Hob_pred_nin.
+      ospecialize* Hprot_inv.
+      { set_solver + Hv. }
+      { set_solver + Hob_pred_nin. }
+      { set_solver + Hob_pred_sub. }
+      rewrite Hgr_lk /= in Hprot_inv.
+
+      iDestruct (Hprot_inv with "Hob_st") as ">Hob_st".
+
+      iApply step_fupd_intro;first set_solver +.
+      iNext. iExists σ.
+      iFrame.
     }
 
     iSplitL "Hinterp_annot Hinterp_token".
     { rewrite -map_union_assoc. rewrite map_empty_union. rewrite insert_union_singleton_l.
-      iFrame. rewrite dom_union_L dom_singleton_L. by iFrame. }
-    iSplitL "Hinterp_local";last done.
+      iFrame. rewrite dom_union_L dom_singleton_L. iFrame. }
+    iSplitL "Hinterp_local";last (clear;done).
     {
       iNamed "Hinterp_local". iSplitL "Hinterp_local_lws".
-      iApply (last_write_interp_progress_non_write with "Hinterp_local_lws");auto.
-      intro Hin. erewrite progress_to_node_mk_eid_ii in Hin;eauto.
+      iApply (last_write_interp_progress_non_write with "Hinterp_local_lws");first reflexivity.
+      intro Hin. erewrite progress_to_node_mk_eid_ii in Hin;[|reflexivity].
       pose proof (AAConsistent.event_is_write_elem_of_mem_writes2 _ Hgraph_wf Hin) as [? [Hlk' HW]].
-      rewrite Hgr_lk in Hlk'. inversion Hlk'. subst x. done.
-      iApply (po_pred_interp_skip with "Hinterp_po_src");auto.
+      rewrite Hgr_lk in Hlk'. inversion Hlk'. subst x. contradiction.
+      iApply (po_pred_interp_skip with "Hinterp_po_src"). reflexivity.
     }
   Qed.
 
-  Lemma reg_read `{!UserProt} {tid : Tid} {ts ctxt b reg val}:
+  Lemma reg_read {tid : Tid} {ts ctxt b reg val}:
     ThreadState.ts_reqs ts = AAInter.Next (AAInter.RegRead reg b) ctxt ->
     ts.(ts_regs) !! reg = Some (val : RegVal) ->
     ⊢
@@ -116,8 +126,8 @@ Section rules.
     inversion Hat_prog as [Hpg]. clear Hat_prog.
     case_bool_decide as Hv.
     2:{
-      rewrite (LThreadStep.step_progress_valid_is_reqs_nonempty _ _ _ ts) in Hv;[|done|done].
-      rewrite Hreqs /EmptyInterp /= in Hv. exfalso. by apply Hv.
+      rewrite (LThreadStep.step_progress_valid_is_reqs_nonempty _ _ _ ts) in Hv; [|reflexivity|eassumption].
+      rewrite Hreqs /EmptyInterp /= in Hv. exfalso. apply Hv. congruence.
     }
     iIntros (?). iNamed 1.
 
@@ -132,34 +142,43 @@ Section rules.
     iMod (token_alloc with "[$Hinterp_token $Hannot_at_prog //]") as "(Hinterp_token & _)".
 
     iExists emp%I, ∅, ∅, ls.
-    iModIntro. iSplitR; [iSplitR |]. { by iApply empty_na_splitting_wf. }
-
+    iModIntro. iSplitR. { iApply empty_na_splitting_wf. }
+    iSplitR.
     (** getting out resources from FE *)
     {
-      repeat iNamed 1. iApply step_fupd_intro;first auto.
-      rewrite /prot_node /=. erewrite progress_to_node_mk_eid_ii;last reflexivity. iNext.
+      rewrite flow_eq_dyn_unseal /flow_eq_dyn_def.
+      iIntros (??). repeat iNamed 1.
 
-      iSplitL. iModIntro. iIntros (????) "E_W'".
-      iDestruct (graph_event_agree with "Hinterp_global E_W'") as %Heq.
-      destruct Heq as [? [Hlk ?]].
-      rewrite Hlk in Hgr_lk. inversion Hgr_lk. subst x. contradiction.
-      done.
+      pose proof (prot_inv_unchanged _ σ s_ob eid Hgraph_wf) as Hprot_inv.
+      iDestruct "Hob_pred_sub" as %Hob_pred_sub.
+      iDestruct "Hob_pred_nin" as %Hob_pred_nin.
+      ospecialize* Hprot_inv.
+      { set_solver + Hv. }
+      { set_solver + Hob_pred_nin. }
+      { set_solver + Hob_pred_sub. }
+      rewrite Hgr_lk /= in Hprot_inv.
+
+      iDestruct (Hprot_inv with "Hob_st") as ">Hob_st".
+
+      iApply step_fupd_intro;first set_solver +.
+      iNext. iExists σ.
+      iFrame.
     }
 
     iSplitL "Hinterp_annot Hinterp_token".
     { rewrite -map_union_assoc. rewrite map_empty_union. rewrite insert_union_singleton_l.
-      iFrame. rewrite dom_union_L dom_singleton_L. by iFrame. }
+      iFrame. rewrite dom_union_L dom_singleton_L. iFrame. }
     iSplitL "Hinterp_local".
     {
       iNamed "Hinterp_local". iSplitL "Hinterp_local_lws".
-      iApply (last_write_interp_progress_non_write with "Hinterp_local_lws");auto.
-      intro Hin. erewrite progress_to_node_mk_eid_ii in Hin;eauto.
+      iApply (last_write_interp_progress_non_write with "Hinterp_local_lws"). reflexivity.
+      intro Hin. erewrite progress_to_node_mk_eid_ii in Hin;[|reflexivity].
       pose proof (AAConsistent.event_is_write_elem_of_mem_writes2 _ Hgraph_wf Hin) as [? [Hlk' HW]].
-      rewrite Hgr_lk in Hlk'. inversion Hlk'. subst x. done.
-      iApply (po_pred_interp_skip with "Hinterp_po_src");auto.
+      rewrite Hgr_lk in Hlk'. inversion Hlk'. subst x. contradiction.
+      iApply (po_pred_interp_skip with "Hinterp_po_src"). reflexivity.
     }
 
-    destruct H5 as [? [Hlk <-]]. rewrite Hreg in Hlk. inversion Hlk. done.
+    destruct H4 as [? [Hlk <-]]. rewrite Hreg in Hlk. inversion Hlk. clear;done.
   Qed.
 
 End rules.

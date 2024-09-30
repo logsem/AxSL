@@ -90,9 +90,10 @@ Lemma list_filter_split {A} (l : list A) (P: A -> Prop) `{forall x : A, Decision
 
 Section list_subset_ind.
   (* An induction principle that works well with [big_sepL/big_sepL2] *)
+  (* TODO: move *)
   Definition list_subset {A} (l l' : list A) := ∃ x l'', l' ≡ₚ l ++ (x :: l'') .
 
-  Lemma list_subset_wf {A} : wf ((@list_subset A))%stdpp.
+  Lemma list_subset_wf {A} : well_founded ((@list_subset A))%stdpp.
   Proof.
     intros l.
     apply (Acc_impl (fun l1 l2 => length l1 < length l2)).
@@ -119,9 +120,10 @@ End list_subset_ind.
 
 Section prefix_ind.
   (* An induction principle that works well with [big_sepL/big_sepL2] *)
+  (* TODO: move *)
   Definition prefix_strict {A} (l l' : list A) := ∃ x, l' = l ++ [x].
 
-  Lemma prefix_strict_wf {A} : wf ((@prefix_strict A))%stdpp.
+  Lemma prefix_strict_wf {A} : well_founded ((@prefix_strict A))%stdpp.
   Proof.
     intros l.
     apply (Acc_impl (fun l1 l2 => length l1 < length l2)).
@@ -143,8 +145,7 @@ Section prefix_ind.
     {
       intros.
       specialize (IHl' a (a::l')).
-      feed specialize IHl'.
-      done.
+      ospecialize (IHl' _). done.
       destruct IHl' as [l'' []].
       exists (x::l'').
       exists x0.
@@ -164,7 +165,7 @@ Section prefix_ind.
     destruct x eqn:Heqn.
     done.
     pose proof (prefix_strict_cons x l a).
-    feed specialize H2;first done.
+    ospecialize (H2 _);first done.
     destruct H2.
     rewrite -Heqn.
     apply (H0 x0);first done.
@@ -250,7 +251,7 @@ Section theorems.
     apply map_eq_iff.
     intros.
     rewrite lookup_union.
-    rewrite 2!map_filter_lookup.
+    rewrite 2!map_lookup_filter.
     destruct (m !! i) eqn:Hlk;simpl.
     {
       rewrite option_guard_bool_decide.
@@ -273,7 +274,7 @@ Section theorems.
     induction m2 using map_ind.
     - intros. exists ∅. split;auto. rewrite dom_empty in Hsub.
       apply set_subseteq_antisymm in Hsub.
-      feed specialize Hsub.
+      ospecialize (Hsub _).
       apply empty_subseteq.
       rewrite !Hsub.
       split. rewrite dom_empty //.
@@ -405,7 +406,7 @@ Section set_fold_to_gmap.
     (set_fold (λ e (acc : gmap A B), <[e:=f e]> acc) ∅ X) !! k = Some (f k).
   Proof.
     intros. rewrite set_fold_to_gmap_imap //. rewrite lookup_union_l //.
-    rewrite map_lookup_imap. rewrite lookup_gset_to_gmap. case_option_guard; done.
+    rewrite map_lookup_imap. rewrite lookup_gset_to_gmap. case_guard; done.
   Qed.
 
 End set_fold_to_gmap.

@@ -36,7 +36,7 @@
 
 (** This file contains the definition of the operational semantics *)
 From Coq Require Import ssreflect.
-From stdpp Require Import numbers unstable.bitvector.
+From stdpp Require Import numbers bitvector.definitions.
 
 From RecordUpdate Require Export RecordSet.
 Export RecordSetNotations.
@@ -66,10 +66,10 @@ Proof.
   revert n n'.
   induction t ;simpl;try lia.
   intros. specialize  (IHt (n+n) (n' + n'))%nat.
-  feed specialize IHt. lia.
+  ospecialize* IHt. lia.
   lia.
   intros. specialize  (IHt (n+n) (n' + n'))%nat.
-  feed specialize IHt. lia.
+  ospecialize* IHt. lia.
   lia.
 Qed.
 
@@ -78,7 +78,7 @@ Proof.
   rewrite /Pos.to_nat.
   induction t ;simpl.
   lia.
-  pose proof (iter_op_plus_mono t 1 2). feed specialize H;first lia.
+  pose proof (iter_op_plus_mono t 1 2). ospecialize* H;first lia.
   lia.
   lia.
 Qed.
@@ -297,6 +297,7 @@ Module ThreadState.
     done.
   Qed.
 
+  (* TODO: optimise *)
   Lemma progress_nle_gt pg1 pg2 : (progress_le pg1 pg2 -> False) ->
                   progress_lt pg2 pg1.
   Proof.
@@ -363,7 +364,7 @@ Module ThreadState.
   Proof.
     rewrite /incr_cntr /get_progress /=.
     intros Hle Hlt ->.
-    efeed pose proof (progress_iid_le_same_instr ts) as Hiid_le;eauto.
+    opose proof* (progress_iid_le_same_instr ts) as Hiid_le;eauto.
     rewrite Nat.le_lteq in Hiid_le; destruct Hiid_le as [Hiid_lt | Hiid_eq].
     - exfalso. rewrite progress_le_inv in Hle. destruct pg'';simpl in *. destruct Hle as [Hlt' | Heq].
       destruct Hlt' as [H1|H1];simpl in H1;try lia. inversion Heq;lia.
@@ -453,7 +454,7 @@ Module ThreadState.
     split.
     {
       intros Hlt.
-      efeed pose proof (progress_iid_le_same_instr ts) as Hiid_le;eauto.
+      opose proof* (progress_iid_le_same_instr ts) as Hiid_le;eauto.
       rewrite Nat.le_lteq in Hiid_le; destruct Hiid_le as [Hiid_lt | Hiid_eq].
       - left;done.
       - destruct pg;simpl in *.
@@ -547,7 +548,7 @@ Module LThreadStep.
   (* union of all register dependencies + memory dependencies *)
   Definition deps_of_depon tid ts dep :=
     match dep with
-    (* None is not reachable, but we might need to fix it. Since [None] is interpreted as
+    (* FIXME: None is not reachable, but we might need to fix it. Since [None] is interpreted as
             "depending on all previous registers and memory values that were read" in the Interface *)
     | None => ∅
     | Some depon =>
@@ -584,25 +585,33 @@ Module LThreadStep.
     let req := (RegRead r true) in
     (* current request is RegRead, [ctxt] is the continuation *)
     next_req_is ts req ctxt ->
+    (* let eid := (mk_eid_ii ts tid) in *)
     (* we can find an event with same request in graph, the response is [v] *)
     gs.(gs_graph) !! (mk_eid_ii ts tid) = Some (IEvent req v) ->
+    (* (* there is a e_po_src -po-> eid *) *)
+    (* is_po gs.(gs_graph) ts.(ts_po_src) eid -> *)
     (* local reg has same value *)
     (∃ rv, ts.(ts_regs) !! r = Some rv ∧ rv.(reg_val) = v) ->
     (* increment [iis_cntr] and set [ctxt] as the new [ts_reqs] *)
     t gs tid (LTSNormal ts) (LTSNormal ((incr_cntr ts)
-                                          <| ts_reqs := (ctxt v) |>))
+                                          (*XXX <| ts_po_src := Some eid |> *)
+                                                        <| ts_reqs := (ctxt v) |>))
   | TStepRegWrite ts r dep v ctxt :
     let req := (RegWrite r true dep v) in
     (* current request is RegWrite, [ctxt] is the continuation *)
     next_req_is ts req ctxt ->
+    (* let eid := (mk_eid_ii ts tid) in *)
     (* we can find an event with same request in graph, no response is expected*)
     gs.(gs_graph) !! (mk_eid_ii ts tid) = Some (IEvent req tt) ->
+    (* (* there is a e_po_src -po-> eid *) *)
+    (* is_po gs.(gs_graph) ts.(ts_po_src) eid -> *)
     (* computing the dependencies *)
     let reg_dep := deps_of_depon tid ts dep in
     (* incrementing [iis_cntr], updating register, setting [ctxt] as the new [ts_reqs] *)
     t gs tid (LTSNormal ts) (LTSNormal ((incr_cntr ts)
-                                          <| ts_regs := <[r := mk_regval v reg_dep]>(ts.(ts_regs)) |>
-                                          <| ts_reqs := (ctxt tt) |>))
+                                          (*XXX <| ts_po_src := Some eid |> *)
+                                                       <| ts_regs := <[r := mk_regval v reg_dep]>(ts.(ts_regs)) |>
+                                                       <| ts_reqs := (ctxt tt) |>))
   | TStepBranch ts baddr dep ctxt:
     let req := (BranchAnnounce baddr dep) in
     (* current request is RegWrite, [ctxt] is the continuation *)
@@ -623,6 +632,7 @@ Module LThreadStep.
     (* we can find an event with same request in graph, no response is expected*)
     gs.(gs_graph) !! eid = Some (IEvent req tt) ->
     (* there are e_ctrl_src -ctrl-> eid *)
+    (* FIXME, this allows for spurious ctrl edges, but this should be safe? *)
     ((ts.(ts_ctrl_srcs)) × ({[eid]})) ⊆ (Candidate.ctrl gs.(gs_graph)) ->
     (* incrementing [iis_cntr], updating [ts_po_src], setting [ctxt] as the new [ts_reqs] *)
     t gs tid (LTSNormal ts) (LTSNormal ((incr_cntr ts) <| ts_reqs := (ctxt tt) |>))
@@ -635,6 +645,7 @@ Module LThreadStep.
     gs.(gs_graph) !! eid = Some (IEvent req tt) ->
     (* there are e_ctrl_src -ctrl-> eid *)
     ((ts.(ts_ctrl_srcs)) × ({[eid]})) ⊆ (Candidate.ctrl gs.(gs_graph)) ->
+    (* set_Forall (fun e_ctrl_src => is_ctrl gs.(gs_graph) e_ctrl_src eid) (ts.(ts_ctrl_srcs) -> *)
     (* incrementing [iis_cntr], updating [ts_po_src], setting [ctxt] as the new [ts_reqs] *)
     t gs tid (LTSNormal ts) (LTSNormal ((incr_cntr ts) <| ts_reqs := (ctxt tt) |>))
   | TStepReadMem ts sz rreq mv ctxt:
@@ -646,9 +657,13 @@ Module LThreadStep.
     (* we can find an event with same request in graph *)
     gs.(gs_graph) !! eid = Some (IEvent req resp) ->
     (* there are e_addr_src -addr-> eid *)
+    (* FIXME, this allows for spurious addr edges, but this should be safe? *)
     ((deps_of_depon tid ts rreq.(ReadReq.addr_dep_on)) × ({[eid]})) ⊆ (Candidate.addr gs.(gs_graph)) ->
+    (* set_Forall (fun e_addr_src => (e_addr_src, eid) ∈ Candidate.addr gs.(gs_graph)) (deps_of_depon ts rreq.(ReadReq.addr_dep_on)) -> *)
     (* there are e_ctrl_src -ctrl-> eid *)
+    (* FIXME, this allows for spurious ctrl edges, but this should be safe? *)
     ((ts.(ts_ctrl_srcs)) × ({[eid]})) ⊆ (Candidate.ctrl gs.(gs_graph)) ->
+    (* set_Forall (fun e_ctrl_src =>  (e_ctrl_src, eid) ∈ Candidate.ctrl gs.(gs_graph)) ts.(ts_ctrl_srcs) -> *)
     (* incrementing [iis_cntr], updating [ts_po_src], setting [ctxt] as the new [ts_reqs] *)
     t gs tid (LTSNormal ts) (LTSNormal ((incr_cntr (ts <| ts_iis := (ts.(ts_iis) <| iis_mem_reads := ((ts.(ts_iis).(iis_mem_reads)) ++ [ts.(ts_iis).(iis_cntr)] )|>)|>))
                                                        <| ts_reqs := (ctxt resp) |>
@@ -662,12 +677,17 @@ Module LThreadStep.
     let resp := (inl None) in
     (* we can find an event with same request in graph, no response is expected*)
     gs.(gs_graph) !! eid = Some (IEvent req resp) ->
+    (* FIXME, all these dependency calculations allow for spurious dependencies,
+        but this should be safe as adding dependencies only decreases allowed behaviour? *)
     (* there are e_addr_src -addr-> eid *)
     ((deps_of_depon tid ts wreq.(WriteReq.addr_dep_on)) × ({[eid]})) ⊆ (Candidate.addr gs.(gs_graph)) ->
+    (* set_Forall (fun e_addr_src => (e_addr_src, eid) ∈ Candidate.addr gs.(gs_graph)) (deps_of_depon ts wreq.(WriteReq.addr_dep_on)) -> *)
     (* there are e_data_src -data-> eid *)
     ((deps_of_depon tid ts wreq.(WriteReq.data_dep_on)) × ({[eid]})) ⊆ (Candidate.data gs.(gs_graph)) ->
+    (* set_Forall (fun e_data_src => (e_data_src, eid) ∈ Candidate.data gs.(gs_graph)) (deps_of_depon ts wreq.(WriteReq.data_dep_on)) -> *)
     (* there are e_ctrl_src -ctrl-> eid *)
     ((ts.(ts_ctrl_srcs)) × ({[eid]})) ⊆ (Candidate.ctrl gs.(gs_graph)) ->
+    (* set_Forall (fun e_ctrl_src => (e_ctrl_src, eid) ∈ Candidate.ctrl gs.(gs_graph)) ts.(ts_ctrl_srcs) -> *)
     (* incrementing [iis_cntr], updating [ts_po_src], setting [ctxt] as the new [ts_reqs] *)
     t gs tid (LTSNormal ts) (LTSNormal ((incr_cntr ts) <| ts_reqs := (ctxt resp) |>))
   | TStepWriteMemAtomicSucc ts sz wreq ctxt rmw_pred:
@@ -681,12 +701,17 @@ Module LThreadStep.
     (* we can find an event with same request in graph, respond with succuss*)
     gs.(gs_graph) !! eid = Some (IEvent req resp) ->
     (rmw_pred, eid) ∈ (Candidate.rmw gs.(gs_graph)) ->
+    (* FIXME, all these dependency calculations allow for spurious dependencies,
+        but this should be safe as adding dependencies only decreases allowed behaviour? *)
     (* there are e_addr_src -addr-> eid *)
     ((deps_of_depon tid ts wreq.(WriteReq.addr_dep_on)) × ({[eid]})) ⊆ (Candidate.addr gs.(gs_graph)) ->
+    (* set_Forall (fun e_addr_src => (e_addr_src, eid) ∈ Candidate.addr gs.(gs_graph)) (deps_of_depon ts wreq.(WriteReq.addr_dep_on)) -> *)
     (* there are e_data_src -data-> eid *)
     ((deps_of_depon tid ts wreq.(WriteReq.data_dep_on)) × ({[eid]})) ⊆ (Candidate.data gs.(gs_graph)) ->
+    (* set_Forall (fun e_data_src => (e_data_src, eid) ∈ Candidate.data gs.(gs_graph)) (deps_of_depon ts wreq.(WriteReq.data_dep_on)) -> *)
     (* there are e_ctrl_src -ctrl-> eid *)
     ((ts.(ts_ctrl_srcs)) × ({[eid]})) ⊆ (Candidate.ctrl gs.(gs_graph)) ->
+    (* set_Forall (fun e_ctrl_src => (e_ctrl_src, eid) ∈ Candidate.ctrl gs.(gs_graph)) ts.(ts_ctrl_srcs) -> *)
     (* incrementing [iis_cntr], updating [ts_po_src], setting [ctxt] as the new [ts_reqs] *)
     t gs tid (LTSNormal ts) (LTSNormal ((incr_cntr ts) <| ts_reqs := (ctxt resp) |>))
   | TStepWriteMemAtomicFail ts sz wreq ctxt:
@@ -779,7 +804,7 @@ Module LThreadStep.
     inversion 1 as [ |??????Hdone| | | | | | | | |];inversion 1;subst.
     inversion 1. intros ?.
     specialize (Hdone (progress_to_node pg tid)).
-    subst pg. feed specialize Hdone.
+    subst pg. ospecialize* Hdone.
     apply elem_of_filter. split;done.
     rewrite /progress_of_node /progress_to_node /= in Hdone.
     eapply progress_lt_refl_False. apply Hdone.
@@ -802,14 +827,14 @@ Module LThreadStep.
     intros Hstep pg'' Hvalid Hge Hlt.
     inversion Hstep;subst.
     - epose proof ts_is_done_instr_inv as Hinv.
-      feed specialize Hinv. eauto.
+      ospecialize (Hinv _). eauto.
       epose proof (progress_iid_le_next_instr _ _ Hlt) as Hiid_le.
       rewrite Nat.le_lteq in Hiid_le; destruct Hiid_le as [Hiid_lt | Hiid_eq]
       + exfalso. rewrite progress_le_inv in Hge. destruct pg'';simpl in *. destruct Hge as [Hlt' | Hlt'];try lia.
         destruct Hlt' as [Hlt' | Hlt']; simpl in Hlt';lia. inversion Hlt';lia.
-      + efeed specialize Hinv;eauto. exfalso. eapply progress_le_gt_False;eauto.
+      + ospecialize* Hinv;eauto. exfalso. eapply progress_le_gt_False;eauto.
     - exfalso. epose proof ts_is_done_thd_inv as Hinv.
-      efeed specialize Hinv; eauto. eapply progress_le_gt_False;eauto.
+      ospecialize* Hinv; eauto. eapply progress_le_gt_False;eauto.
     - eapply progress_adjacent_incr_cntr;eauto.
     - eapply progress_adjacent_incr_cntr;eauto.
     - eapply progress_adjacent_incr_cntr;eauto.
@@ -869,31 +894,29 @@ Module LThreadStep.
         * inversion_clear Hsteps1 as [|? ? lts''' ? Hfststep Hsteps1'].
         assert (n1 + n2 = n)%nat as Hsum' by lia.
         specialize (IH lts''' lts').
-        feed specialize IH. rewrite -Hsum'. by eapply nsteps_trans. done.
-        specialize (IH pg'' Hvalid). destruct IH as [IH _]. feed specialize IH.
+        ospecialize* (IH _ _ pg'' Hvalid). rewrite -Hsum'. by eapply nsteps_trans. done.
+        destruct IH as [IH _]. ospecialize* IH.
         exists n1, n2, lts''. repeat (split;first done). done.
         destruct IH as (Hge & Hlt). split;last done.
-        epose proof (step_progress_mono Hfststep) as Hlts. efeed specialize Hlts;eauto.
+        epose proof (step_progress_mono Hfststep) as Hlts. ospecialize* Hlts;eauto.
         destruct n;first lia. eapply (steps_not_terminated lts' n);eauto.
         rewrite -Hsum'. eapply nsteps_trans;eauto.
         epose proof (steps_progress_mono' _ Hsteps1') as Hle';auto.
-        efeed specialize Hle';eauto. eapply progress_le_trans;eauto. apply progress_lt_le;auto.
+        ospecialize* Hle';eauto. eapply progress_le_trans;eauto. apply progress_lt_le;auto.
       + intros (Hge & Hlt).
         inversion_clear Hsteps as [|? ? lts''' ? Hfststep Hsteps'].
         destruct n.
-        * specialize (IH lts''' lts').
-          feed specialize IH; auto.
+        * ospecialize (IH lts''' lts' _); auto.
           inversion Hsteps';subst.
           epose proof (step_progress_adjacent _ _) as Hpgeq;eauto.
-          feed specialize Hpgeq;eauto.
-          efeed specialize Hpgeq;eauto. subst pg''.
+          ospecialize* Hpgeq;eauto.
+          ospecialize* Hpgeq;eauto. subst pg''.
           exists 0%nat,1%nat, lts. split;[lia|split;[lia|]]. repeat (split;first done).
           split. constructor. by apply nsteps_once.
         * inversion_clear Hsteps'.
           destruct (decide ((get_progress lts''') = pg'')).
-          -- specialize (IH lts''' lts').
-             feed specialize IH;auto. eapply nsteps_l;eauto.
-             specialize (IH _ Hvalid). destruct IH as [_ IH]. feed specialize IH.
+          -- ospecialize* (IH lts''' lts');auto. eapply nsteps_l;eauto.
+             exact Hvalid. destruct IH as [_ IH]. ospecialize* IH.
              split;auto. subst pg''. apply progress_le_refl.
              exists 1%nat, (S n), lts'''. split;first lia.
              split;first lia. repeat (split;first done).
@@ -901,14 +924,14 @@ Module LThreadStep.
           -- destruct (decide (pg'' <=p (get_progress lts'''))) as [Hle'|Hnle'].
              rewrite progress_le_inv in Hle'.
              destruct Hle';last done.
-             efeed pose proof (step_progress_adjacent lts lts''' Hfststep);eauto.
+             opose proof* (step_progress_adjacent lts lts''' Hfststep);eauto.
              subst pg''.
              exists 0%nat, (S (S n)), lts.
              split;first done. split;first lia. split;first done.
              split. constructor. econstructor;eauto. eapply nsteps_l;eauto.
              specialize (IH lts''' lts').
-             feed specialize IH; auto.  eapply nsteps_l;eauto.
-             specialize (IH _ Hvalid). destruct IH as [_ IH]. feed specialize IH.
+             ospecialize* IH; auto.  eapply nsteps_l;eauto.
+             exact Hvalid. destruct IH as [_ IH]. ospecialize* IH.
              split;last done. apply progress_nle_gt in Hnle'. rewrite progress_le_inv. left;done.
              destruct IH as (n1 & n2 & lts'' & Hsum & Hnz & ? & ? & ?). destruct n1.
              inversion H2. subst. done.
@@ -932,7 +955,7 @@ Module LThreadStep.
 
   Lemma eids_between_inv gr tid lts lts' :
     forall pg'',
-    ( progress_is_valid gr tid pg'' ∧ get_progress lts <=p pg'' ∧ pg'' <pget_progress lts')
+    ( progress_is_valid gr tid pg'' ∧ get_progress lts <=p pg'' ∧ pg'' <p get_progress lts')
     <-> (progress_to_node pg'' tid) ∈ (eids_between gr tid lts lts').
   Proof.
     intros ?. split.
@@ -975,7 +998,7 @@ Module LThreadStep.
     <-> (progress_to_node pg'' tid) ∈ (eids_between (gs.(gs_graph)) tid lts lts').
   Proof.
     intros. rewrite -eids_between_inv. epose proof steps_traverse_all_eids as Heq.
-    efeed specialize Heq;eauto. rewrite Heq.
+    ospecialize* Heq;eauto. rewrite Heq.
     split;intros (?&?);repeat destruct Hpg as [? Hpg];eauto.
   Qed.
 
@@ -997,7 +1020,7 @@ Module LThreadStep.
         {
           rewrite /progress_to_node /progress_of_node /=.
           destruct e eqn:Heqn. simpl.
-          efeed pose proof elem_of_eids_between_in_thd as Htid;eauto.
+          opose proof* elem_of_eids_between_in_thd as Htid;eauto.
           rewrite -Htid //.
         }
         rewrite Heqe in Hin.
@@ -1038,7 +1061,7 @@ Module LThreadStep.
       {
         rewrite /progress_to_node /progress_of_node /=.
         destruct e eqn:Heqn. simpl.
-        efeed pose proof elem_of_eids_between_in_thd as Htid;eauto.
+        opose proof* elem_of_eids_between_in_thd as Htid;eauto.
         rewrite -Htid //.
       }
       rewrite Heqe in Hin. pose proof Hin.
@@ -1124,7 +1147,7 @@ Module LThreadStep.
       destruct Hpo as [e' [-> Hpo]].
       assert(Heid : EID.tid e = tid). { pose (G:= Graph.po_valid_eids gr e (progress_to_node pg tid) Hwf Hpo). destruct G as [_ ->]. by simpl. }
       pose proof (progress_lt_po _ tid (progress_of_node e) pg Hwf) as [_ Himp].
-      feed specialize Himp. rewrite progress_to_node_of_node //.
+      ospecialize* Himp. rewrite progress_to_node_of_node //.
       destruct Himp as [Hlt [Hvalide Hvalid']].
       split;first auto.
       apply elem_of_filter. split;first assumption.
@@ -1133,7 +1156,7 @@ Module LThreadStep.
       rewrite elem_of_filter in Hlc.
       destruct Hlc as [Htid Hvalid'].
       pose proof (progress_lt_po _ tid (progress_of_node e) pg Hwf) as [Himp _].
-      feed specialize Himp.
+      ospecialize* Himp.
       split;auto. split;auto. rewrite /progress_is_valid.
       rewrite progress_to_node_of_node //.
       set_unfold. exists (progress_to_node pg tid).
@@ -1148,7 +1171,7 @@ Module LThreadStep.
   Proof.
     intros Hstep.
     rewrite /eids_from_init.
-    efeed pose proof (LThreadStep.step_progress_mono' Hstep) as Hle;eauto.
+    opose proof* (LThreadStep.step_progress_mono' Hstep) as Hle;eauto.
     case_bool_decide as Hpg_valid.
     - erewrite <-(step_traversed_eids_valid_singleton lts lts');eauto. rewrite /eids_between //.
       epose proof (progress_le_eids_subseteq (gs_graph gs) tid (get_progress lts) (get_progress lts') Hle) as Hsub.
@@ -1162,7 +1185,7 @@ Module LThreadStep.
       destruct (decide (ThreadState.progress_of_node x <p (get_progress lts))) as [|Hnlt]. done.
       apply ThreadState.progress_nlt_ge in Hnlt.
       rewrite elem_of_filter in Hvalid. destruct Hvalid as [Hvalid Htid].
-      efeed pose proof (LThreadStep.step_progress_adjacent _ _ Hstep (ThreadState.progress_of_node x))as Heq;auto.
+      opose proof* (LThreadStep.step_progress_adjacent _ _ Hstep (ThreadState.progress_of_node x)) as Heq;auto.
       rewrite /ThreadState.progress_is_valid. rewrite ThreadState.progress_to_node_of_node //.
       exfalso. apply Hpg_valid.
       rewrite /ThreadState.progress_is_valid Heq. rewrite ThreadState.progress_to_node_of_node //.
@@ -1187,7 +1210,7 @@ Module LThreadStep.
     intros Hinit Hterm [n Hstep].
     rewrite /eids_between.
     epose proof (eids_from_init_empty (LThreadState.get_progress lts)) as Hept.
-    feed specialize Hept; eauto.
+    ospecialize* Hept; eauto.
     rewrite /eids_from_init in Hept. rewrite Hept.
     rewrite difference_empty_L.
     apply nsteps_inv_r in Hstep. destruct Hstep as [? [? Hstep]].
@@ -1195,9 +1218,34 @@ Module LThreadStep.
     apply set_eq. intro. rewrite /local_eids 3!elem_of_filter.
     split.
     - intros [Htid Hin]. split;last done.
-      specialize (Hdone x); feed specialize Hdone.
+      specialize (Hdone x); ospecialize* Hdone.
       rewrite /local_eids elem_of_filter //. done.
     - intros [? ?]. done.
   Qed.
 
 End LThreadStep.
+
+(* NOTE: no abstraction at all for now *)
+(* Structure machine := AMachine { *)
+(*   local_state : Type; *)
+(*   id : Type; *)
+(*   global_const : Type; *)
+(*   terminated : local_state → bool; *)
+(*   prim_step : global_const -> id -> local_state → local_state → Prop; *)
+(*   has_progress : (@HasProgress global_const id local_state terminated); *)
+(*   has_graph : (HasGraph global_const); *)
+(*   machine_mixin : *)
+(*     MachineMixin terminated prim_step *)
+(* }. *)
+
+(* Arguments AMachine {_ _ _} _ _ _ _ _. *)
+(* Arguments terminated {_} _. *)
+(* Arguments prim_step {_} _ _ _ _. *)
+
+(* From iris.algebra Require Export ofe. *)
+(* FIXME: warnings *)
+
+(* Canonical Structure LTSO := leibnizO LThreadState.t. *)
+(* Canonical Structure GSO := leibnizO GlobalState.t. *)
+
+(* Canonical Structure AAMach := AMachine LThreadState.is_terminated LThreadStep.t lts_has_progress gs_has_graph LThreadStep.machine_mixin. *)

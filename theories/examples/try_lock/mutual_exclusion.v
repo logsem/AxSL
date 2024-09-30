@@ -34,12 +34,12 @@
 (*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
 (*                                                                                  *)
 
-From stdpp.unstable Require Import bitvector bitvector_tactics.
+From stdpp.bitvector Require Import definitions tactics.
 
 From iris.proofmode Require Import tactics.
 From iris.algebra Require Import excl.
 
-From self.middle Require Import rules specialised_rules.
+From self.mid Require Import rules specialised_rules.
 Require Import ISASem.SailArmInstTypes.
 
 From self.examples.try_lock Require Import implementation.
@@ -48,14 +48,14 @@ Import uPred.
 
 (* ghost states *)
 Class MeInPreG `{CMRA Σ} := {
-    MeOneShot :> inG Σ (csumR (dfrac_agreeR unitO)
+    MeOneShot :: inG Σ (csumR (dfrac_agreeR unitO)
                              (agreeR (leibnizO Eid)));
-    MeOneShot' :> inG Σ (csumR (exclR unitO)
+    MeOneShot' :: inG Σ (csumR (exclR unitO)
                              (agreeR unitO));
   }.
 
 Class MeInG `{CMRA Σ} := {
-    MeIn :> MeInPreG;
+    MeIn :: MeInPreG;
     MeOneShotNx : gname;
     MeOneShotNy : gname;
     MeOneShotNl : gname;
@@ -162,19 +162,31 @@ Section mutual_exclusion.
   Context `{AAIrisG} `{!AAThreadG} `{ThreadGN}.
   Context `{!MeInG}.
 
-  Definition me_prot_x (eid : Eid) (v : Val) : iProp Σ :=
+  Definition me_x_prot (v : Val) (eid : Eid) : iProp Σ :=
     if (bool_decide (v = data_init)) then
       (⌜eid.(EID.tid) = 0%nat⌝)%I
     else if (bool_decide (v = data_flag)) then
            (shot_x eid)%I
          else False%I.
 
-  Definition me_prot_y (eid : Eid) (v : Val) : iProp Σ :=
+  Local Instance me_x_prot_persist v eid : Persistent (me_x_prot v eid).
+  Proof.
+    rewrite /me_x_prot. case_bool_decide. apply _.
+    case_bool_decide; apply _.
+  Qed.
+
+  Definition me_y_prot (v : Val) (eid : Eid): iProp Σ :=
     if (bool_decide (v = data_init)) then
       (⌜eid.(EID.tid) = 0%nat⌝)%I
     else if (bool_decide (v = data_flag)) then
            (shot_y eid)%I
          else False%I.
+
+  Local Instance me_y_prot_persist v eid : Persistent (me_y_prot v eid).
+  Proof.
+    rewrite /me_y_prot. case_bool_decide. apply _.
+    case_bool_decide; apply _.
+  Qed.
 
   Definition protected q (eid : Eid) : iProp Σ :=
     ((pending_x q ∗ pending_y q)
@@ -186,29 +198,35 @@ Section mutual_exclusion.
                          ∗ eid_x -{Edge.Ob}> eid
                          ∗ eid_y -{Edge.Ob}> eid)).
 
-  Definition me_prot_lock (eid : Eid) (v: Val) :=
+  Definition me_lock_prot (v: Val) (eid : Eid) :=
     if bool_decide (v = unlocked) then excl_inv eid (protected 1%Qp)
      else
        if bool_decide (v = locked) then True%I
        else False%I.
 
-  Definition protocol : UserProt :=
-    Build_UserProt _ _(λ a v e,
-                         if (bool_decide (a = addr_x)) then
-                           me_prot_x e v
-                         else if (bool_decide (a = addr_y)) then
-                           me_prot_y e v
-                         else if (bool_decide (a = addr_lock)) then
-                                me_prot_lock e v
-                         else True%I
-      ).
-
-  Local Instance userprot : UserProt := protocol.
-
-  Local Instance lock_is_lock : IsLockAt addr_lock (protected 1%Qp).
+  Local Instance me_lock_prot_persist v eid : Persistent (me_lock_prot v eid).
   Proof.
-    split. intros. simpl. done.
+    rewrite /me_lock_prot. case_bool_decide. apply _.
+    case_bool_decide; apply _.
   Qed.
+
+  (* Definition protocol : UserProt := *)
+  (*   Build_UserProt _ _(λ a v e, *)
+  (*                        if (bool_decide (a = addr_x)) then *)
+  (*                          me_prot_x e v *)
+  (*                        else if (bool_decide (a = addr_y)) then *)
+  (*                          me_prot_y e v *)
+  (*                        else if (bool_decide (a = addr_lock)) then *)
+  (*                               me_prot_lock e v *)
+  (*                        else True%I *)
+  (*     ). *)
+
+  (* Local Instance userprot : UserProt := protocol. *)
+
+  (* Local Instance lock_is_lock : IsLockAt addr_lock (protected 1%Qp). *)
+  (* Proof. *)
+  (*   split. intros. simpl. done. *)
+  (* Qed. *)
 
   Notation bne reg addr:= (IBne (AEreg reg) addr).
   Notation bne_neg reg addr:= (IBne (AEbinop AOminus (AEreg reg) (AEval (BV 64 1))) addr).
@@ -236,6 +254,9 @@ Section mutual_exclusion.
     last_local_write 2 addr_x None -∗
     last_local_write 2 addr_y None -∗
     last_local_write 2 addr_lock None -∗
+    Prot[ addr_x, (1/2)%Qp | me_x_prot ] -∗
+    Prot[ addr_y, (1/2)%Qp | me_y_prot ] -∗
+    Prot[ addr_lock, (1/2)%Qp | me_lock_prot ] -∗
     instrs_reader -∗
     WPi (LTSI.Normal, (BV 64 0x2000)) @ 2
       {{ λ lts',
@@ -247,11 +268,11 @@ Section mutual_exclusion.
             )
       }}.
   Proof.
-    iIntros "Hpo_src Hctrl_src Hrmw Hreg1 Hreg2 Hreg3 Hreg4 Hlocalw_x Hlocalw_y Hlocalw_l Hinstrs".
+    iIntros "Hpo_src Hctrl_src Hrmw Hreg1 Hreg2 Hreg3 Hreg4 Hlocalw_x Hlocalw_y Hlocalw_l Hprot_x Hprot_y Hprot_l Hinstrs".
     iDestruct "Hinstrs" as "(#? & #? & #? & #? & #? & #? & #?)".
 
     iApply (acquire _ _ _ _ (λ eid, (protected (1/2)%Qp eid ∗ protected (1/2)%Qp eid))%I
-             with "Hpo_src Hctrl_src Hrmw Hreg1 Hreg2 Hlocalw_l [#$]").
+             with "Hpo_src Hctrl_src Hrmw Hreg1 Hreg2 Hlocalw_l Hprot_l [#$]").
     {
       iIntros (?) "[Hl|#Hr]".
       {
@@ -359,17 +380,18 @@ Section mutual_exclusion.
     & Hna_lw' & #Hob_lwlw' & #He_b & #Hpo_lw'b)".
     rewrite union_empty_l_L.
 
+    iDestruct (annot_split_iupd with "Hna_lw'") as ">[Hna_lw' Hna_lw'_lw]".
     iDestruct (annot_split_iupd with "Hna_lw'") as ">[Hna_lw'_x Hna_lw'_y]".
     assert (G: (BV 64 8212 `+Z` 4)%bv = (BV 64 8216)%bv); [bv_solve|]. rewrite G;clear G.
     iDestruct (lpo_to_po with "Hpo_src") as "[Hpo_src #Hpo_src_b]".
 
     (* Read x *)
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hlocalw_x Hpo_src Hctrl_src Hna_lw'_x Hreg3 Hrmw_src]").
+    iApply sswpi_wpi. iApply (sswpi_mono with "[Hlocalw_x Hprot_x Hpo_src Hctrl_src Hna_lw'_x Hreg3 Hrmw_src]").
     {
       iApply (iload_pln (λ eid_x v,
                            ((⌜v = data_init⌝ ∗ ⌜eid_x.(EID.tid) = 0%nat⌝ ∗ protected (1/2)%Qp eid_lw)
                             ∨ (⌜v = data_flag⌝  ∗ shot_x eid_x ∗ shot_l ∗ eid_x -{Edge.Ob}> eid_lw
-                               ∗ eid_x -{E}> (Event.W AS_normal AV_plain addr_x data_flag)
+                               ∗ (∃ (kind_s_w : AccessStrength) (kind_v_w : AccessVariety), eid_x -{E}> Event.W kind_s_w kind_v_w addr_x v)
                                ∗ ∃ eid_y, (shot_y eid_y) ∗ ⌜eid_y.(EID.tid) = 1%nat⌝ ∗ eid_y -{Edge.Ob}> eid_lw
                                           ∗ eid_y -{E}> (Event.W AS_normal AV_plain addr_y data_flag))))%I
                 {[eid_b]} {[eid_lw' := protected (1/2)%Qp eid_lw]}
@@ -383,15 +405,17 @@ Section mutual_exclusion.
         iDestruct (event_node with "He_b") as "$".
       }
       {
-        iIntros (eid_w_x v_x) "He_r_x Htid_r_x Hpo_r_x He_w_x Hrf_x HP #Hprot".
-        rewrite big_sepM_singleton. rewrite /prot /= /me_prot_x.
+        iExists _,_,_. iSplitL. iIntros "H";iFrame. iExact "H".
+        iIntros (eid_w_x v_x) "He_r_x Htid_r_x Hpo_r_x He_w_x Hrf_x Hp HP #Hprot".
+        rewrite big_sepM_singleton.
+        rewrite /me_x_prot.
         iModIntro.
         case_bool_decide.
-        { iLeft; iFrame "#∗". done. }
+        { iFrame "#". iLeft. iFrame. done. }
         {
           case_bool_decide;last done.
           {
-            iRight. iSplit;first done.
+            iFrame "#". iRight. iSplit;first done.
             iDestruct "HP" as "[[Hx _]|(?& %&%&Hshot_x &?& Hshot_y & ?&?&?&?&?)]".
             {
               iExFalso.
@@ -399,7 +423,7 @@ Section mutual_exclusion.
             }
             {
               iDestruct (shot_shot with "Hprot Hshot_x") as %->.
-              iFrame "#∗". iExists _. iFrame.
+              iFrame "#∗".
             }
           }
         }
@@ -416,7 +440,7 @@ Section mutual_exclusion.
     iDestruct (lpo_to_po with "Hpo_src") as "[Hpo_src #Hpo_src_r_x]".
 
     (* Read y *)
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hlocalw_y Hpo_src Hctrl_src Hna_lw'_y Hreg4 Hrmw_src]").
+    iApply sswpi_wpi. iApply (sswpi_mono with "[Hlocalw_y Hprot_y Hpo_src Hctrl_src Hna_lw'_y Hreg4 Hrmw_src]").
     {
       iApply (iload_pln (λ eid_y v,
                            ((⌜v = data_init⌝ ∗ ⌜eid_y.(EID.tid) = 0%nat⌝ ∗ protected (1/2)%Qp eid_lw)
@@ -440,23 +464,24 @@ Section mutual_exclusion.
         set_solver + Hneq_eid_r_x.
       }
       {
-        iIntros (eid_w_y v_y) "He_r_y Htid_r_y Hpo_r_y He_w_y Hrf_y HP #Hprot".
+        iExists _,_,_. iSplitL. iIntros "H";iFrame;iExact "H".
+        iIntros (eid_w_y v_y) "He_r_y Htid_r_y Hpo_r_y He_w_y Hrf_y Hp HP #Hprot".
         rewrite big_sepM_singleton.
-        rewrite /prot /= /me_prot_y.
+        rewrite /me_y_prot.
         iModIntro.
         case_bool_decide.
-        { iLeft; iFrame "#∗". done. }
+        { iFrame "#". iLeft; iFrame. done. }
         {
           case_bool_decide;last done.
           {
-            iRight. iSplit;first done.
+            iFrame "#". iRight. iSplit;first done.
             iDestruct "HP" as "[[_ Hy]|(?& %&%&Hshot_x&? & Hshot_y &?& ?&?&?&?)]".
             {
               iExFalso. iApply (pending_shot with "Hy Hprot").
             }
             {
               iDestruct (shot_shot with "Hprot Hshot_y") as %->.
-              iFrame "#∗". iExists _. iFrame.
+              iFrame "#∗".
             }
           }
         }
@@ -473,33 +498,69 @@ Section mutual_exclusion.
     iAssert (⌜eid_r_x ≠ eid_r_y⌝%I) as "%Hneq_eid_r_x_y".
     { iIntros (->). iApply (po_irrefl with "Hpo_r_x_r_y"). }
 
-    iApply (release _ _ {[eid_r_x; eid_r_y]} {[eid_r_x := _; eid_r_y := _]}
+    iApply (release _ _ {[eid_r_x; eid_r_y]} {[eid_r_x := _; eid_r_y := _; eid_lw' := _]}
                     (⌜val_x = data_init ∧ val_y = data_init⌝ ∨ ⌜val_x = data_flag ∧ val_y = data_flag⌝)%I
-             with "Hpo_src [] Hctrl_src Hrmw_src Hlocalw_l [#$] [Hna_r_x Hna_r_y]").
+             with "Hpo_src [] Hctrl_src Hrmw_src Hlocalw_l [#$] [Hna_r_x Hna_r_y Hna_lw'_lw]").
     {
-      rewrite 2!dom_insert_L. set_solver +.
+      rewrite 3!dom_insert_L. set_solver +.
     }
     {
-      rewrite big_sepS_union. rewrite 2!big_sepS_singleton.  iFrame "#".
+      rewrite big_sepS_union. rewrite 2!big_sepS_singleton. iFrame "#".
       set_solver + Hneq_eid_r_x_y.
     }
     {
       iApply (big_sepM_insert_2 with "Hna_r_x").
-      by iApply (big_sepM_insert_2 with "Hna_r_y").
+      iApply (big_sepM_insert_2 with "Hna_r_y").
+      by iApply (big_sepM_insert_2 with "Hna_lw'_lw").
     }
     {
+      iExists _.
+      iAssert (⌜eid_lw' ≠ eid_r_x⌝%I) as "%Hneq_eid_lw'_x".
+      {
+        iIntros (->).
+        iDestruct (po_trans with "Hpo_lw'b Hpo_b_r_x" ) as "HH".
+        iApply (po_irrefl with "HH").
+      }
+
+      iAssert (⌜eid_lw' ≠ eid_r_y⌝%I) as "%Hneq_eid_lw'_y".
+      {
+        iIntros (->).
+        iDestruct (po_trans with "Hpo_lw'b Hpo_b_r_y" ) as "HH".
+        iApply (po_irrefl with "HH").
+      }
+
+      iSplitL.
+      rewrite big_sepM_insert.
+      2:{
+        simplify_map_eq /=. done.
+      }
+      rewrite big_sepM_insert.
+      2:{
+        simplify_map_eq /=. done.
+      }
+      rewrite big_sepM_singleton.
+
+      iIntros "(H & H' & $)". iCombine "H H'" as "H". iExact "H".
+
       iIntros (eid_r).
       iSplitR.
       {
-        iIntros "_ _". rewrite 2!dom_insert_L. rewrite dom_empty_L. rewrite union_empty_r_L.
-        rewrite difference_diag_L. done.
+        iIntros "_ #Hpoo". rewrite 3!dom_insert_L. rewrite dom_empty_L. rewrite union_empty_r_L.
+        assert ((({[eid_r_x]} ∪ {[eid_r_y; eid_lw']})
+                      ∖ {[eid_r_x; eid_r_y]}) = {[eid_lw']}) as ->.
+        { set_solver. }
+        rewrite big_sepS_singleton.
+        iApply (po_dmbsy_po_is_lob with "Hpo_lw'b [] ").
+        iApply (event_node with "He_b").
+        rewrite big_sepS_union. 2: set_solver.
+        rewrite big_sepS_singleton. iDestruct "Hpoo" as "[Hpoo _]".
+        iApply (po_trans with "[] Hpoo"). iFrame "#".
       }
       {
         iIntros "(#He_r&Hpos&HP)".
         rewrite big_sepS_union. 2: set_solver + Hneq_eid_r_x_y.
-        rewrite 2!big_sepS_singleton. rewrite big_sepM_insert.
-        2:{ rewrite lookup_singleton_None //. }
-        rewrite big_sepM_singleton. iModIntro.
+        rewrite 2!big_sepS_singleton.
+        iModIntro.
         iDestruct "HP" as "[[Hz_x | Hf_x] [Hz_y | Hf_y]]".
         {
           (* case x=0, y=0 *)
@@ -610,7 +671,7 @@ Section mutual_exclusion.
     rewrite dom_singleton_L. apply set_Forall_singleton. done.
     rewrite big_sepM_singleton. iFrame.
     rewrite big_sepM_singleton.
-    iIntros "%HH". iModIntro. iSplit;first done.
+    iIntros "[%HH Hp]". iModIntro. iSplit;first done.
     iExists _,_,_,_. iFrame. simpl. iIntros "_". iPureIntro. done.
     set_solver + Hneq_eid_r_x.
   Qed.
@@ -634,6 +695,9 @@ Section mutual_exclusion.
     last_local_write 1 addr_x None -∗
     last_local_write 1 addr_y None -∗
     last_local_write 1 addr_lock None -∗
+    Prot[ addr_x, (1/2)%Qp | me_x_prot ] -∗
+    Prot[ addr_y, (1/2)%Qp | me_y_prot ] -∗
+    Prot[ addr_lock, (1/2)%Qp | me_lock_prot ] -∗
     instrs_writer -∗
     pending_l -∗
     WPi (LTSI.Normal, (BV 64 0x1000)) @ 1
@@ -641,11 +705,11 @@ Section mutual_exclusion.
            ⌜lts' = (LTSI.Done, (BV 64 0x1024))⌝
       }}.
   Proof.
-    iIntros "Hpo_src Hctrl_src Hrmw Hreg1 Hreg2 Hlocalw_x Hlocalw_y Hlocalw_l Hinstrs Hpending_l".
+    iIntros "Hpo_src Hctrl_src Hrmw Hreg1 Hreg2 Hlocalw_x Hlocalw_y Hlocalw_l Hprot_x Hprot_y Hprot_lock Hinstrs Hpending_l".
     iDestruct "Hinstrs" as "(#? & #? & #? & #? & #? & #? & #?)".
 
     iApply (acquire _ _ _ _ (λ _,  pending_l ∗ pending_x 1%Qp ∗ pending_y 1%Qp)%I
-             with "Hpo_src Hctrl_src Hrmw Hreg1 Hreg2 Hlocalw_l [#$] [Hpending_l]").
+             with "Hpo_src Hctrl_src Hrmw Hreg1 Hreg2 Hlocalw_l Hprot_lock [#$] [Hpending_l]").
     {
       iIntros (?) "[Hl|[Hshot_l Hr]]".
       { iModIntro. iDestruct "Hl" as "[$ $]". iFrame. }
@@ -728,16 +792,19 @@ Section mutual_exclusion.
     & Hna_lw' & #Hob_lwlw' & #He_b & #Hpo_lw'b)".
     rewrite union_empty_l_L.
 
+    iDestruct (annot_split_iupd with "Hna_lw'") as ">[Hna_lw' Hna_lw'_p]".
     iDestruct (annot_split_iupd with "Hna_lw'") as ">[Hna_lw'_l Hna_lw']".
     iDestruct (annot_split_iupd with "Hna_lw'") as ">[Hna_lw'_x Hna_lw'_y]".
     assert (G: (BV 64 4116 `+Z` 4)%bv = (BV 64 4120)%bv); [bv_solve|]. rewrite G;clear G.
     iDestruct (lpo_to_po with "Hpo_src") as "[Hpo_src #Hpo_src_b]".
 
     (* Write x *)
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hlocalw_x Hpo_src Hctrl_src Hna_lw'_x]").
+    iApply sswpi_wpi. iApply (sswpi_mono with "[Hlocalw_x Hprot_x Hpo_src Hctrl_src Hna_lw'_x]").
     {
       iApply (istore_pln (λ eid, shot_x eid) {[eid_b]} {[eid_lw' := pending_x 1]} with "[$Hpo_src $Hctrl_src $Hlocalw_x Hna_lw'_x]").
       { iFrame "#∗". rewrite big_sepS_singleton big_sepM_singleton. iFrame "#∗". }
+
+      iExists _,_,_. iSplitL. iIntros "H";iFrame. iExact "H".
       iIntros (eid_w_x). iSplitR.
       {
         iIntros "HE Hpo_b _".
@@ -747,10 +814,10 @@ Section mutual_exclusion.
       }
       {
         rewrite big_sepS_singleton big_sepM_singleton.
-        iIntros "HE Htid_w_x Hpo_w_x Hpending_x".
+        iIntros "HE Htid_w_x Hpo_w_x Hp Hpending_x".
         iDestruct (shoot _ eid_w_x with "Hpending_x") as ">#Hshot_x".
         iModIntro. iSplit;first done.
-        iModIntro. simpl. rewrite /me_prot_x.
+        rewrite /me_x_prot.
         case_bool_decide. inversion H4.
         case_bool_decide;last done. iFrame "Hshot_x".
       }
@@ -766,7 +833,7 @@ Section mutual_exclusion.
     iDestruct (lpo_to_po with "Hpo_src") as "[Hpo_src #Hpo_src_w_x]".
 
     (* Write y *)
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hlocalw_y Hpo_src Hctrl_src Hna_lw'_y]").
+    iApply sswpi_wpi. iApply (sswpi_mono with "[Hlocalw_y Hprot_y Hpo_src Hctrl_src Hna_lw'_y]").
     {
       iApply (istore_pln (λ eid, shot_y eid) {[eid_b;eid_w_x]}
                 {[eid_lw' := pending_y 1]} with "[$Hpo_src $Hctrl_src $Hlocalw_y Hna_lw'_y]").
@@ -774,6 +841,7 @@ Section mutual_exclusion.
         iFrame "#∗". rewrite big_sepM_singleton. iFrame "#∗".
         rewrite big_sepS_union. rewrite 2!big_sepS_singleton. iFrame "#". set_solver + Hneq_eid_w_x.
       }
+      iExists _,_,_. iSplitL. iIntros "H";iFrame;iExact "H".
       iIntros (eid_w_y). iSplitR.
       {
         rewrite big_sepS_union; last set_solver + Hneq_eid_w_x.
@@ -785,7 +853,7 @@ Section mutual_exclusion.
       }
       {
         rewrite big_sepM_singleton.
-        iIntros "HE Htid_w_y Hpos Hpending_y".
+        iIntros "HE Htid_w_y Hpos Hp Hpending_y".
         iDestruct (shoot _ eid_w_y with "Hpending_y") as ">#Hshot_y".
         iModIntro. iFrame "#∗".
       }
@@ -804,8 +872,10 @@ Section mutual_exclusion.
     assert (G: ((BV 64 4124) `+Z` 4 = (BV 64 4128))%bv); [bv_solve|]. rewrite G. clear G.
     iDestruct (lpo_to_po with "Hpo_src") as "[Hpo_src #Hpo_src_w_y]".
 
+    iDestruct (annot_merge_iupd with "Hna_lw'_p Hna_lw'_l") as ">Hna_lw'_l".
+
     iApply (release _ _ {[eid_w_x; eid_w_y]}
-                    {[eid_w_x := shot_x eid_w_x; eid_w_y := shot_y eid_w_y ; eid_lw' := pending_l]} emp
+                    {[eid_w_x := shot_x eid_w_x; eid_w_y := shot_y eid_w_y ; eid_lw' := _]} emp
              with "Hpo_src [] Hctrl_src Hrmw_src Hlocalw_l [#$] [Hna_w_x Hna_w_y Hna_lw'_l]").
     {
       rewrite 3!dom_insert_L. set_solver +.
@@ -820,6 +890,30 @@ Section mutual_exclusion.
       iApply (big_sepM_singleton with "Hna_lw'_l").
     }
     {
+      iExists _. iSplitL.
+      iAssert (⌜eid_lw' ≠ eid_w_x⌝%I) as "%Hneq_eid_lw'_x".
+      {
+        iIntros (->).
+        iDestruct (po_trans with "Hpo_lw'b Hpo_b_w_x" ) as "HH".
+        iApply (po_irrefl with "HH").
+      }
+
+      iAssert (⌜eid_lw' ≠ eid_w_y⌝%I) as "%Hneq_eid_lw'_y".
+      {
+        iIntros (->).
+        iDestruct (po_trans with "Hpo_lw'b Hpo_b_w_y" ) as "HH".
+        iApply (po_irrefl with "HH").
+      }
+
+      rewrite big_sepM_insert.
+      2: { simplify_map_eq /=. done. }
+      rewrite big_sepM_insert.
+      2: { simplify_map_eq /=. done. }
+      rewrite big_sepM_singleton.
+
+      iIntros "(H1 & H2 & $ & H3)".
+      iCombine "H1 H2 H3" as "HH". iExact "HH".
+
       iIntros (?).
 
       iDestruct (po_trans with "Hpo_lw'b Hpo_b_w_y") as "#Hpo_lw'_w_y".
@@ -846,11 +940,6 @@ Section mutual_exclusion.
         { iApply (po_trans with "Hpo_b_w_y Hpo_w_y_r"). }
       }
       iIntros "(#He_r&Hpos&HP)".
-      rewrite big_sepM_insert.
-      2: { rewrite 2!lookup_insert_None. set_solver. }
-      rewrite big_sepM_insert.
-      2: { rewrite lookup_insert_None. set_solver. }
-      rewrite big_sepM_singleton.
       iDestruct "HP" as "(Hshot_x & Hshot_y & Hpending_l)".
       iMod (shoot_l with "Hpending_l") as "Hshot_l".
       iModIntro. iSplit;last done. iRight. iFrame "Hshot_l".

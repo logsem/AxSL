@@ -1,8 +1,8 @@
 (*                                                                               *)
 (*  BSD 2-clause License                                                         *)
 (*                                                                               *)
-(*  This applies to all files in this archive except where                       *)
-(*  specified otherwise.                                                         *)
+(*  This applies to all files in this archive except folder                      *)
+(*  "armv9-instantiation-types" or where specified otherwise.                    *)
 (*                                                                               *)
 (*  Copyright (c) 2022                                                           *)
 (*    Thibaut Pérami                                                             *)
@@ -93,6 +93,7 @@ Ltac instanciate_as_found e :=
    If someone finds a Ltac hack to have exactly the same semantics for any
    number of arguments, Please replace and check that everything depending still
    builds *)
+(* TODO make it recursive *)
 Ltac pattern_for H :=
   lazymatch (type of H) with
   | _ ?a ?b ?c =>

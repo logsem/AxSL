@@ -34,13 +34,12 @@
 (*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
 (*                                                                                  *)
 
-From stdpp.unstable Require Export bitvector.
-From stdpp.unstable Require Import bitvector_tactics.
+From stdpp.bitvector Require Export definitions tactics.
 
 From iris.proofmode Require Import tactics.
 From iris.algebra Require Import excl.
 
-From self.middle Require Import rules specialised_rules.
+From self.mid Require Import rules specialised_rules.
 Require Import ISASem.SailArmInstTypes.
 
 Import uPred.
@@ -67,17 +66,8 @@ Section write_reg.
     (BV 64 0x2004) ↦ᵢ write "r2" addr_x ∗
     (BV 64 0x2008) ↦ᵢ -.
 
-  Definition lb_prot (v : Val) : iProp Σ :=
+  Definition lb_prot (v : Val) (e: Eid) : iProp Σ :=
     ⌜v = BV 64 0⌝.
-
-  Definition protocol : UserProt :=
-    Build_UserProt _ _(λ a v e,
-                         if (bool_decide (a = addr_x)) || (bool_decide (a = addr_y))
-                         then lb_prot v
-                         else True%I
-      ).
-
-  Local Instance userprot : UserProt := protocol.
 
   Definition write_reg_thread_1 tid :
     None -{LPo}> -∗
@@ -86,6 +76,8 @@ Section write_reg.
     (∃ rv, "r1" ↦ᵣ rv) -∗
     last_local_write tid addr_x None -∗
     last_local_write tid addr_y None -∗
+    Prot[ addr_x, (1/2)%Qp | lb_prot ] -∗
+    Prot[ addr_y, (1/2)%Qp | lb_prot ] -∗
     instrs -∗
     WPi (LTSI.Normal, (BV 64 0x1000)) @ tid
       {{ λ lts',
@@ -93,27 +85,31 @@ Section write_reg.
            ∃ rv, "r1" ↦ᵣ rv ∗ ⌜rv.(reg_val) = BV 64 0⌝
       }}.
   Proof.
-    iIntros "Hpo_src Hctrl_src Hrmw [% Hreg] Hlocalw_x Hlocalw_y Hinstrs".
+    iIntros "Hpo_src Hctrl_src Hrmw [% Hreg] Hlocalw_x Hlocalw_y Hprot_x Hprot_y Hinstrs".
     iDestruct "Hinstrs" as "(#? & #? & #? & _ & _)".
 
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src Hctrl_src Hlocalw_x Hrmw Hreg]").
+    iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src Hctrl_src Hlocalw_x Hprot_x Hrmw Hreg]").
     {
-      iApply (iload_pln (λ _ v, lb_prot v ∗ lb_prot v)%I ∅ ∅ with "[-] []").
+      iApply (iload_pln (λ e v, lb_prot v e ∗ lb_prot v e)%I ∅ ∅ with "[-Hprot_x] [Hprot_x]").
       iFrame "#∗".  rewrite big_sepM_empty big_sepS_empty //.
 
-      iIntros. iSplitL.
+      iIntros. iSplitR.
       - iIntros "_ _". rewrite big_sepM_empty //.
-      - iIntros (??) "_ _ _ _ _ _ %". iPureIntro. done.
+      - iExists _,_,emp%I. iSplitL.
+        iIntros "_". iFrame.
+        iIntros (??) "_ _ _ _ _ _ %". iPureIntro. done.
     }
     iIntros (?) "(->&(%&%&%&(#Hwrite&%&Hreg&Hna&_&Hrfe&Hpo&_&Hctrl&Hrmw&_)))".
     assert (G: ((BV 64 4096) `+Z` 4 = (BV 64 4100))%bv); [bv_solve|]. rewrite G.
 
     iDestruct (annot_split_iupd with "Hna") as ">[Hna1 Hna2]".
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hlocalw_y Hwrite Hpo Hctrl Hrmw Hreg Hna1]").
+    iApply sswpi_wpi. iApply (sswpi_mono with "[Hlocalw_y Hprot_y Hwrite Hpo Hctrl Hrmw Hreg Hna1]").
     {
-      iApply istore_pln_single_data. iFrame "#∗".
-      iIntros (eid'') "#Hwrite' _ #Hpo #Hdata %Hprot".
-      iModIntro. simpl. done.
+      iApply (istore_pln_single_data). iFrame "#∗".
+      iExists (lb_prot v eid').
+      iSplitR. iIntros "$".
+      iIntros (eid'') "#Hwrite' _ #Hpo #Hdata Hp Hprot".
+      iFrame.
     }
     iIntros (?) "(%&[? (%&?&?&?&?)])".
     subst. clear G. assert (G: ((BV 64 4100) `+Z` 4 = (BV 64 4104))%bv); [bv_solve|].
@@ -122,7 +118,7 @@ Section write_reg.
     iApply sswpi_wpi. iApply (sswpi_mono _ _ _ (λ s', ⌜s' = (LTSI.Done, BV 64 4104)⌝)%I).
     { by iApply idone. }
     iIntros (? ->). iApply wpi_terminated.
-    iApply (inst_post_lifting_lifting _ _ _ {[eid:= (lb_prot v)]} with "[Hna2]").
+    iApply (inst_post_lifting_lifting _ _ _ {[eid:= (lb_prot v eid')]} with "[Hna2]").
     rewrite dom_singleton_L set_Forall_singleton //.
     rewrite big_sepM_singleton //.
     rewrite big_sepM_singleton //. iIntros. iModIntro.
@@ -136,6 +132,8 @@ Section write_reg.
     (∃ rv, "r2" ↦ᵣ rv) -∗
     last_local_write tid addr_x None -∗
     last_local_write tid addr_y None -∗
+    Prot[ addr_x, (1/2)%Qp | lb_prot ] -∗
+    Prot[ addr_y, (1/2)%Qp | lb_prot ] -∗
     instrs -∗
     WPi (LTSI.Normal, (BV 64 0x2000)) @ tid
       {{ λ lts',
@@ -143,27 +141,30 @@ Section write_reg.
            ∃ rv, "r2" ↦ᵣ rv ∗ ⌜rv.(reg_val) = BV 64 0⌝
       }}.
   Proof.
-    iIntros "Hpo_src Hctrl_src Hrmw [% Hreg] Hlocalw_x Hlocalw_y Hinstrs".
+    iIntros "Hpo_src Hctrl_src Hrmw [% Hreg] Hlocalw_x Hlocalw_y Hprot_x Hprot_y Hinstrs".
     iDestruct "Hinstrs" as "(_ & _ & _ & #? & #? & #?)".
 
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src Hctrl_src Hlocalw_y Hrmw Hreg]").
+    iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src Hctrl_src Hlocalw_y Hprot_y Hrmw Hreg]").
     {
-      iApply (iload_pln (λ _ v, lb_prot v ∗ lb_prot v)%I ∅ ∅ with "[-] []").
+      iApply (iload_pln (λ e v, lb_prot v e ∗ lb_prot v e)%I ∅ ∅ with "[-Hprot_y] [Hprot_y]").
       iFrame "#∗".  rewrite big_sepM_empty big_sepS_empty //.
 
-      iIntros. iSplitL.
+      iIntros. iSplitR.
       - iIntros "_ _". rewrite big_sepM_empty //.
-      - iIntros (??) "_ _ _ _ _ _ %". iPureIntro. done.
+      - iExists _,_,emp%I.
+        iSplitL. iIntros "_";iFrame.
+        iIntros (??) "_ _ _ _ _ _ %". iPureIntro. done.
     }
     iIntros (?) "(->&(%&%&%&(#Hwrite&%&Hreg&Hna&_&Hrfe&Hpo&_&Hctrl&Hrmw&_)))".
     assert (G: ((BV 64 8192) `+Z` 4 = (BV 64 8196))%bv); [bv_solve|]. rewrite G.
     iDestruct (annot_split_iupd with "Hna") as ">[Hna1 Hna2]".
 
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hlocalw_x Hwrite Hpo Hctrl Hreg Hna1]").
+    iApply sswpi_wpi. iApply (sswpi_mono with "[Hlocalw_x Hprot_x Hwrite Hpo Hctrl Hreg Hna1]").
     {
       iApply istore_pln_single_data. iFrame "#∗".
-      iIntros (eid'') "#Hwrite' _ #Hpo #Hdata %Hprot".
-      iModIntro. simpl. done.
+      iExists (lb_prot v eid'). iSplit. iIntros "$".
+      iIntros (eid'') "#Hwrite' _ #Hpo #Hdata Hp Hprot".
+      iFrame.
     }
     iIntros (?) "(%&[? (%&?&?&?&?)])".
     subst. clear G. assert (G: ((BV 64 8196) `+Z` 4 = (BV 64 8200))%bv); [bv_solve|]. rewrite G.
@@ -171,7 +172,7 @@ Section write_reg.
     iApply sswpi_wpi. iApply (sswpi_mono _ _ _ (λ s', ⌜s' = (LTSI.Done, BV 64 8200)⌝)%I).
     { by iApply idone. }
     iIntros (? ->). iApply wpi_terminated.
-    iApply (inst_post_lifting_lifting _ _ _ {[eid:= (lb_prot v)]} with "[Hna2]").
+    iApply (inst_post_lifting_lifting _ _ _ {[eid:= (lb_prot v eid')]} with "[Hna2]").
     rewrite dom_singleton_L set_Forall_singleton //.
     rewrite big_sepM_singleton //.
     rewrite big_sepM_singleton //. iIntros. iModIntro.
