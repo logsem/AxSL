@@ -27,13 +27,12 @@ of `AxSL`.
 - `low`: This directory contains the definition of weakest preconditions, the soundness proof of 
 low-level proof rules, and the adequacy theorem.
   - `low/weakestpre.v` defines the base weakest precondition that is parameterised by the implementation 
-  of state interpretation.
-  - `low/instantiation.v` contains the instantiation of the base weakest precondition with a specific 
+  of state interpretation. It also contains the definition of flow implications.
+  - `low/instantiation.v` and `low/*_res.v` contains the instantiation of the base weakest precondition with a specific 
   state interpretation implementation.
   - `low/rules/*.v` contain base proof rules and their soundness proofs.
   - `low/lifting.v` and `low/adequacy.v` contain the adequacy proof with respect to the base weakest 
   precondition.
-  - `low/lib/annotations.v` contains the definitions of protocols and flow implications.
 
 - `middle`: This directory contains the proof rules for all microinstructions and abstraction layers.
   - `middle/weakestpre.v` defines an abstraction layer based on low-level weakest preconditions.
