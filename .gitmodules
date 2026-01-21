@@ -1,0 +1,6 @@
+[submodule "iris-named-props"]
+	path = iris-named-props
+	url = git@github.com:tchajed/iris-named-props.git
+[submodule "coq-sail"]
+	path = coq-sail
+	url = git@github.com:rems-project/coq-sail.git
