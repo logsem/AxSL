@@ -15,9 +15,5 @@ jobs:
     steps:
     - name: Check out repos
       uses: actions/checkout@v3
-      with:
-        token: ${{ secrets.AXSL_CI_TOKEN }}
-        submodules: true
-        persist-credentials: false
     - name: Build the Docker image
       run: docker build . --file Dockerfile --tag axsl:$(date +%s)
