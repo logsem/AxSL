@@ -1,38 +1,39 @@
-(*                                                                                  *)
-(*  BSD 2-Clause License                                                            *)
-(*                                                                                  *)
-(*  This applies to all files in this archive except folder                         *)
-(*  "system-semantics".                                                             *)
-(*                                                                                  *)
-(*  Copyright (c) 2023,                                                             *)
-(*     Zongyuan Liu                                                                 *)
-(*     Angus Hammond                                                                *)
-(*     Jean Pichon-Pharabod                                                         *)
-(*     Thibaut Pérami                                                               *)
-(*                                                                                  *)
-(*  All rights reserved.                                                            *)
-(*                                                                                  *)
-(*  Redistribution and use in source and binary forms, with or without              *)
-(*  modification, are permitted provided that the following conditions are met:     *)
-(*                                                                                  *)
-(*  1. Redistributions of source code must retain the above copyright notice, this  *)
-(*     list of conditions and the following disclaimer.                             *)
-(*                                                                                  *)
-(*  2. Redistributions in binary form must reproduce the above copyright notice,    *)
-(*     this list of conditions and the following disclaimer in the documentation    *)
-(*     and/or other materials provided with the distribution.                       *)
-(*                                                                                  *)
-(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"     *)
-(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE       *)
-(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE  *)
-(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE    *)
-(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL      *)
-(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR      *)
-(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER      *)
-(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,   *)
-(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE   *)
-(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
-(*                                                                                  *)
+(**************************************************************************************)
+(*  BSD 2-Clause License                                                              *)
+(*                                                                                    *)
+(*  This applies to all files in this archive except folder                           *)
+(*  "system-semantics".                                                               *)
+(*                                                                                    *)
+(*  Copyright (c) 2023,                                                               *)
+(*       Zongyuan Liu                                                                 *)
+(*       Angus Hammond                                                                *)
+(*       Jean Pichon-Pharabod                                                         *)
+(*       Thibaut Pérami                                                               *)
+(*                                                                                    *)
+(*  All rights reserved.                                                              *)
+(*                                                                                    *)
+(*  Redistribution and use in source and binary forms, with or without                *)
+(*  modification, are permitted provided that the following conditions are met:       *)
+(*                                                                                    *)
+(*  1. Redistributions of source code must retain the above copyright notice, this    *)
+(*     list of conditions and the following disclaimer.                               *)
+(*                                                                                    *)
+(*  2. Redistributions in binary form must reproduce the above copyright notice,      *)
+(*     this list of conditions and the following disclaimer in the documentation      *)
+(*     and/or other materials provided with the distribution.                         *)
+(*                                                                                    *)
+(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"       *)
+(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE         *)
+(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE    *)
+(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE      *)
+(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL        *)
+(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR        *)
+(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER        *)
+(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,     *)
+(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE     *)
+(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.              *)
+(*                                                                                    *)
+(**************************************************************************************)
 
 (* This file includes the exclusive invariant and specialised rules *)
 (* From stdpp Require Import unstable.bitvector. *)
@@ -46,13 +47,15 @@ From self.low.lib Require Import edge event.
 
 Import uPred.
 
+Import AACand.
 Section definition.
   Context `{CMRA Σ} `{!AABaseG} `{invGS_gen HasNoLc Σ}.
+
 
   Definition excl_inv_name (eid_w : EID.t) := (nroot .@ (encode eid_w)).
 
   Definition excl_inv eid_w P : iProp Σ :=
-   inv (excl_inv_name eid_w) (P eid_w ∨ ∃ eid_xr eid_xw, eid_w -{(Edge.Rf)}> eid_xr ∗ eid_xr -{(Edge.Rmw)}> eid_xw ∗ Tok{ eid_xw }).
+   inv (excl_inv_name eid_w) (P eid_w ∨ ∃ eid_xr eid_xw, eid_w -{(Edge.Rf)}> eid_xr ∗ eid_xr -{(Edge.Lxsx)}> eid_xw ∗ Tok{ eid_xw }).
 
 End definition.
 
@@ -61,30 +64,29 @@ Section rules.
 
   Lemma rmw_is_bij a b c:
     b ≠ c ->
-    a -{Edge.Rmw}> b -∗
-    a -{Edge.Rmw}> c -∗
+    a -{Edge.Lxsx}> b -∗
+    a -{Edge.Lxsx}> c -∗
     False.
   Proof.
     rewrite edge_eq /edge_def.
     iIntros (?) "[% (Hgr1&_&%Hwf&%)] [% (Hgr2&_&_&%)]".
     iDestruct (graph_agree_agree with "Hgr1 Hgr2") as %<-.
     simpl in *.
-    rewrite /AACandExec.NMSWF.wf in Hwf.
-    assert (AACandExec.NMSWF.rmw_wf gr) as Hrmw_wf by naive_solver.
+    rewrite /AACand.NMSWF.wf in Hwf.
+    assert (AACand.NMSWF.lxsx_wf gr) as Hrmw_wf by naive_solver.
     clear Hwf.
-    rewrite CBool.bool_unfold in Hrmw_wf.
+    unfold NMSWF.lxsx_wf in Hrmw_wf.
     destruct_and ? Hrmw_wf.
     exfalso.
-    rewrite GRel.grel_functional_spec in H4.
     specialize (H4 _ _ _ H2 H3). done.
   Qed.
 
   Lemma rmw_rmw eid_w eid_xw eid_xw' eid_xr eid_xr' :
     eid_xr ≠ eid_xr' ->
     eid_w -{Edge.Rf}> eid_xr -∗
-    eid_xr -{Edge.Rmw}> eid_xw -∗
+    eid_xr -{Edge.Lxsx}> eid_xw -∗
     eid_w -{Edge.Rf}> eid_xr' -∗
-    eid_xr' -{Edge.Rmw}> eid_xw' -∗
+    eid_xr' -{Edge.Lxsx}> eid_xw' -∗
     False.
   Proof.
     rewrite edge_eq /edge_def.
@@ -100,7 +102,7 @@ Section rules.
   Lemma excl_inv_open_succ `{!invGS_gen HasNoLc Σ} eid_w eid_xr eid_xw E P :
     ↑(excl_inv_name eid_w) ⊆ E ->
     (* FIXME: external rf or lob *)
-    (Tok{ eid_xw } ∗ eid_w -{Edge.Rf}> eid_xr ∧ ⌜EID.tid eid_w ≠ EID.tid eid_xr⌝ ∗ eid_xr -{(Edge.Rmw)}> eid_xw ∗
+    (Tok{ eid_xw } ∗ eid_w -{Edge.Rf}> eid_xr ∧ ⌜EID.tid eid_w ≠ EID.tid eid_xr⌝ ∗ eid_xr -{(Edge.Lxsx)}> eid_xw ∗
      excl_inv eid_w P)
        ={E, E ∖ ↑(excl_inv_name eid_w)}=∗ ▷ (P eid_w ∗ |={E ∖ ↑(excl_inv_name eid_w),E}=> emp).
   Proof.

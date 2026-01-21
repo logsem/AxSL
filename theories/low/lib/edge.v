@@ -1,41 +1,42 @@
-(*                                                                                  *)
-(*  BSD 2-Clause License                                                            *)
-(*                                                                                  *)
-(*  This applies to all files in this archive except folder                         *)
-(*  "system-semantics".                                                             *)
-(*                                                                                  *)
-(*  Copyright (c) 2023,                                                             *)
-(*     Zongyuan Liu                                                                 *)
-(*     Angus Hammond                                                                *)
-(*     Jean Pichon-Pharabod                                                         *)
-(*     Thibaut Pérami                                                               *)
-(*                                                                                  *)
-(*  All rights reserved.                                                            *)
-(*                                                                                  *)
-(*  Redistribution and use in source and binary forms, with or without              *)
-(*  modification, are permitted provided that the following conditions are met:     *)
-(*                                                                                  *)
-(*  1. Redistributions of source code must retain the above copyright notice, this  *)
-(*     list of conditions and the following disclaimer.                             *)
-(*                                                                                  *)
-(*  2. Redistributions in binary form must reproduce the above copyright notice,    *)
-(*     this list of conditions and the following disclaimer in the documentation    *)
-(*     and/or other materials provided with the distribution.                       *)
-(*                                                                                  *)
-(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"     *)
-(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE       *)
-(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE  *)
-(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE    *)
-(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL      *)
-(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR      *)
-(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER      *)
-(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,   *)
-(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE   *)
-(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
-(*                                                                                  *)
+(**************************************************************************************)
+(*  BSD 2-Clause License                                                              *)
+(*                                                                                    *)
+(*  This applies to all files in this archive except folder                           *)
+(*  "system-semantics".                                                               *)
+(*                                                                                    *)
+(*  Copyright (c) 2023,                                                               *)
+(*       Zongyuan Liu                                                                 *)
+(*       Angus Hammond                                                                *)
+(*       Jean Pichon-Pharabod                                                         *)
+(*       Thibaut Pérami                                                               *)
+(*                                                                                    *)
+(*  All rights reserved.                                                              *)
+(*                                                                                    *)
+(*  Redistribution and use in source and binary forms, with or without                *)
+(*  modification, are permitted provided that the following conditions are met:       *)
+(*                                                                                    *)
+(*  1. Redistributions of source code must retain the above copyright notice, this    *)
+(*     list of conditions and the following disclaimer.                               *)
+(*                                                                                    *)
+(*  2. Redistributions in binary form must reproduce the above copyright notice,      *)
+(*     this list of conditions and the following disclaimer in the documentation      *)
+(*     and/or other materials provided with the distribution.                         *)
+(*                                                                                    *)
+(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"       *)
+(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE         *)
+(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE    *)
+(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE      *)
+(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL        *)
+(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR        *)
+(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER        *)
+(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,     *)
+(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE     *)
+(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.              *)
+(*                                                                                    *)
+(**************************************************************************************)
 
 (* This file contains the resource construction for edges *)
-From SSCCommon Require Import Common.
+From SSCCommon Require Import Common CBase.
 From iris.base_logic Require Import iprop.
 
 From self Require Import stdpp_extra.
@@ -46,19 +47,23 @@ From self.lang Require Export instrs mm.
 Module Edge.
   (* Edge *)
 
-  Inductive bn := W (ks : AccessStrength) (kv : AccessVariety) | R (ks : AccessStrength) (kv : AccessVariety) | B ( bκ : BarrierKind).
-  Inductive t := Po | Addr | Data | Ctrl |Rf | Co | Rmw | Fr | Node (bn : bn) |
-              Obs | Lob | Ob.
+  Inductive bn := W (kv : AccessVariety) (ks : AccessStrength)
+             | R (kv : AccessVariety) (ks : AccessStrength)
+             | B (bk : BarKind).
+  Inductive t := Po | Addr | Data | Ctrl |Rf | Co | Lxsx
+            | Fr | Node (bn : bn) | Obs | Lob | Ob.
 
-  Import AACandExec.
+  Import AACand.
 
   Definition ef_node_interp (gr : Graph.t) (bn : bn) (e : Eid) : Prop :=
     ∃ E, gr !! e = Some E
            ∧ match bn with
-    | W ks kv => AAConsistent.event_is_write_with_kind E ks kv
-    | R ks kv => AAConsistent.event_is_read_with_kind E ks kv
-    | B (AAArch.DMB κ) => AAConsistent.event_is_dmb κ E
-    | B AAArch.ISB => AAConsistent.event_is_isb E
+    | W kv ks =>
+        AAInter.is_mem_write_kindP (λ ak', ak' = access_kind_of_AK kv ks) E
+    | R kv ks =>
+        AAInter.is_mem_read_kindP (λ ak', ak' = access_kind_of_AK kv ks) E
+    | B bk =>
+        AAInter.is_barrierP (λ bk', bk' = barrier_of bk) E
   end.
 
   #[global] Hint Unfold ef_node_interp : core.
@@ -71,7 +76,7 @@ Module Edge.
     | Ctrl => (e,e') ∈ (Candidate.ctrl gr)
     | Rf => (e,e') ∈ (Candidate.rf gr)
     | Co => (e,e') ∈ (Candidate.co gr)
-    | Rmw => (e,e') ∈ (Candidate.rmw gr)
+    | Lxsx => (e,e') ∈ (Candidate.lxsx gr)
     | Fr => (e, e') ∈ (Candidate.fr gr)
     | Node bn =>  e = e' ∧ ef_node_interp gr bn e
     | Lob => (e,e') ∈ (AAConsistent.lob gr)
@@ -82,27 +87,28 @@ Module Edge.
   #[global] Hint Unfold ef_node_interp : core.
   #[global] Hint Unfold ef_edge_interp : core.
 
+
   (** Some pure lemmas about [ef_edge_interp]*)
-  Lemma subseteq_lob {gr s e} :
+  Lemma subseteq_lob {gr } {s: gset EID.t} {e: EID.t} :
     set_Forall (λ x : Eid, ef_edge_interp gr Edge.Lob x e) s ->
     s ⊆ Graph.lob_pred_of gr e.
   Proof.
     intro Hlob.
     rewrite /Graph.lob_pred_of.
-    assert (Hsub : GRel.grel_dom (CSets.gset_product s {[e]})
+    assert (Hsub : GRel.grel_dom (s × ({[e]} : gset _))
                      ⊆ GRel.grel_dom (filter (λ '(_, et), et = e) (AAConsistent.lob gr))).
     {
-      assert (Hsub : (CSets.gset_product s {[e]})
-                       ⊆ (filter (λ '(_, et), et = e) (AAConsistent.lob gr))).
+      assert (Hsub : (s × ({[e]} : gset _)) ⊆ (filter (λ '(_, et), et = e) (AAConsistent.lob gr))).
       {
-        transitivity (filter (λ '(_, et), et = e) (CSets.gset_product s {[e]})).
+        transitivity (filter (λ '(_, et), et = e) (s × ({[e]} : gset _))).
         intros ? Hin. rewrite elem_of_filter. split.
-        apply CSets.gset_product_spec in Hin.
-        destruct Hin as [Hin1 Hin2]. destruct x. set_solver + Hin2. done.
+        set_unfold in Hin. destruct x. naive_solver.
+        done.
         apply stdpp_extra.set_filter_subseteq.
-        intros ? Hin. apply CSets.gset_product_spec in Hin. destruct Hin as [Hin1 Hin2].
-        specialize (Hlob x.1 Hin1). simpl in Hlob.
-        apply elem_of_singleton in Hin2. destruct x. subst. simpl in Hlob. done.
+
+        Local Opaque AAConsistent.lob.
+        set_unfold.
+        naive_solver.
       }
       rewrite /GRel.grel_dom. apply set_map_mono. done. set_solver + Hsub.
     }
@@ -114,12 +120,12 @@ End Edge.
 Section def.
   Context `{AABaseG Σ}.
 
-  Import AACandExec.
+  Import AACand.
 
   Definition edge_def (ef : Edge.t) (e e' : Eid) : iProp Σ :=
     ∃ gr,  "Hgr_interp_e" ∷ graph_agree gr ∗
            "%Hgr_wf_e" ∷ ⌜ AAConsistent.t gr ⌝ ∗
-           "%Hgr_cs_e" ∷ ⌜ AACandExec.NMSWF.wf gr ⌝ ∗
+           "%Hgr_cs_e" ∷ ⌜ NMSWF.wf gr ⌝ ∗
            "%Hedge_interp" ∷ ⌜Edge.ef_edge_interp gr ef e e'⌝.
 
   Definition edge_def_aux : seal (@edge_def). Proof. by eexists. Qed.
@@ -147,9 +153,11 @@ Section lemmas.
   #[global] Instance node_def_persist e n : Persistent(node e n).
   Proof. rewrite node_eq. rewrite /node_def. apply _. Qed.
 
+  Import AACand.
   (* edge prompte/demote lemmas *)
-  Lemma acq_po_is_lob a b :
-    a -{N}> Edge.R AS_rel_or_acq AV_plain -∗
+
+  Lemma acq_po_is_lob a b kv:
+    a -{N}> Edge.R kv AS_rel_or_acq  -∗
     a -{Edge.Po}> b -∗
     a -{Edge.Lob}> b.
   Proof.
@@ -163,14 +171,22 @@ Section lemmas.
     2:{ assumption. }
     rewrite /AAConsistent.acq_reads.
     destruct H3 as [_ [? [Hlk He]]].
-    set_unfold. exists x. split;first eassumption.
-    eapply AAConsistent.event_is_read_with_P_impl;last eassumption.
-    intros. naive_solver.
+    set_unfold.
+    cdestruct He.
+    subst x.
+    unfold Candidate.mem_rel_acq.
+    unfold Candidate.mem_by_kind.
+    set_unfold.
+    split.
+    naive_solver.
+    eexists.  split;first eassumption.
+    unfold AAInter.is_mem_event_kindP.
+    simpl. rewrite H7. done.
   Qed.
 
-  Lemma po_rel_is_lob a b kind_s:
+  Lemma po_rel_is_lob a b kv:
     a -{Edge.Po}> b -∗
-    b -{N}> Edge.W AS_rel_or_acq kind_s -∗
+    b -{N}> Edge.W kv AS_rel_or_acq -∗
     a -{Edge.Lob}> b.
   Proof.
     rewrite node_eq /node_def edge_eq /edge_def.
@@ -182,19 +198,18 @@ Section lemmas.
     simpl. apply Graph.po_rel_subseteq_lob. done.
     rewrite /AAConsistent.acq_reads.
     destruct H6 as [_ [?  [Hlk He]]].
-    set_unfold. eexists.
-    split;first eassumption.
-    rewrite /AAConsistent.event_is_rel.
-    rewrite /AAConsistent.event_is_write_with_kind in He.
-    eapply AAConsistent.event_is_write_with_P_impl;[|eassumption].
-    simpl. rewrite /AACandExec.Candidate.kind_of_wreq_P.
-    intros ? wr HwrP.
-    destruct (AAInter.WriteReq.access_kind wr);try contradiction.
-    case_bool_decide as Heq.
-    rewrite Heq. simpl.
-    rewrite (bool_decide_ext _ True). done.
-    split; (intro; done).
-    contradiction.
+    set_unfold.
+
+    cdestruct He.
+    subst x.
+    unfold Candidate.mem_rel_acq.
+    unfold Candidate.mem_by_kind.
+    set_unfold.
+    split.
+    naive_solver.
+    eexists.  split;first eassumption.
+    unfold AAInter.is_mem_event_kindP.
+    simpl. rewrite H7. done.
   Qed.
 
   Lemma addr_is_lob a b :
@@ -268,9 +283,22 @@ Section lemmas.
     apply Graph.rfe_subseteq_ob;done.
   Qed.
 
+  Lemma lxsx_is_lob a b:
+    a -{Edge.Lxsx}> b -∗
+    a -{Edge.Lob}> b.
+  Proof.
+    rewrite edge_eq /edge_def.
+    iIntros "[% (Hg1&%&%&%)]".
+    iExists _. iFrame.
+    iPureIntro. do 2 (split;first done).
+    simpl in *.
+    apply Graph.aob_subseteq_lob.
+    apply Graph.lxsx_subseteq_aob;done.
+  Qed.
+
   Lemma po_dmbsy_po_is_lob a b c:
     a -{Edge.Po}> b -∗
-    b -{N}> (Edge.B (AAArch.DMB AAArch.Sy)) -∗
+    b -{N}> (Edge.B BKsy) -∗
     b -{Edge.Po}> c -∗
     a -{Edge.Lob}> c.
   Proof.
@@ -282,13 +310,18 @@ Section lemmas.
     iPureIntro. do 2 (split;first done).
     apply (Graph.po_dmbsy_po_subseteq_lob _ a b c). done.
     rewrite /Edge.ef_node_interp in H6.
-    rewrite /AAConsistent.dmbs. destruct H6 as [?  [Hlk He]].
-    set_unfold. eexists;eauto.
+    set_unfold.
+    cdestruct H6.
+    rewrite AAInter.is_barrierP_spec in H10.
+    cdestruct H10. subst.
+
+    eexists;split;first eassumption.
+    done.
     done.
   Qed.
 
-  Lemma ctrl_w_is_lob a b ak av:
-    b -{N}> Edge.W ak av -∗
+  Lemma ctrl_w_is_lob a b kv ks:
+    b -{N}> Edge.W kv ks -∗
     a -{Edge.Ctrl}> b -∗
     a -{Edge.Lob}> b.
   Proof.
@@ -299,15 +332,18 @@ Section lemmas.
     iPureIntro. simpl in H3,H6. simpl. apply (Graph.ctrl_w_subseteq_lob _ a b).
     + done.
     + destruct H3 as [? [Hlk He]].
-      unfold AAConsistent.event_is_write_with_kind, AAConsistent.event_is_write_with_P in He.
-      destruct x. destruct o; try (exfalso; assumption).
-      clear -Hlk. set_unfold. repeat eexists. rewrite Hlk. reflexivity.
+      clear - H2 Hlk He.
+      unfold Candidate.mem_writes.
+      set_unfold.
+      eexists. split;first eassumption.
+      cdestruct He. subst x.
+      done.
   Qed.
 
-  Lemma ctrl_isb_po_is_lob a b c ak1 av1 ak2 av2:
-    a -{N}> Edge.R ak1 av1 -∗
-    b -{N}> Edge.B AAArch.ISB -∗
-    c -{N}> Edge.R ak2 av2 -∗
+  Lemma ctrl_isb_po_is_lob a b c kv1 kv2 ks1 ks2:
+    a -{N}> Edge.R kv1 ks1 -∗
+    b -{N}> Edge.B BKisb -∗
+    c -{N}> Edge.R kv2 ks2 -∗
     a -{Edge.Ctrl}> b -∗
     b -{Edge.Po}> c -∗
     a -{Edge.Lob}> c. 
@@ -321,14 +357,19 @@ Section lemmas.
     iExists _. iFrame. iSplit; first (iPureIntro;assumption). iSplit; first (iPureIntro;assumption).
     iPureIntro. simpl in *. apply (Graph.ctrl_isb_po_subseteq_lob _ a b c).
     + done.
-    + unfold AAConsistent.isbs. destruct H6 as [? [Hlk He]].
-      set_unfold. hauto lq: on rew: off.
+    + unfold AAConsistent.isb.
+      clear - H6.
+      destruct H6 as [? [Hlk He]].
+      set_unfold.
+      unfold AAInter.is_barrierP in He. destruct x. destruct o;try contradiction.
+      subst.
+      naive_solver.
     + done.
-    + destruct H9 as [_ [? [Hlk He]]].
-      unfold AAConsistent.event_is_read_with_kind, AAConsistent.event_is_read_with_P in He.
-      destruct x.
-      destruct o; try (exfalso; assumption).
-      set_unfold. repeat eexists. rewrite Hlk. reflexivity.
+    + clear - H9.
+      destruct H9 as [_ [? [Hlk He]]].
+      set_unfold.
+      cdestruct He. subst x.
+      naive_solver.
   Qed.
 
   Lemma ob_trans a b c:

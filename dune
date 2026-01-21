@@ -3,3 +3,5 @@
  (dev
   (binaries (coqc-timing.sh as coqc))
   (flags :standard)))
+
+(dirs :standard \ external)

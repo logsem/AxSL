@@ -1,54 +1,57 @@
-(*                                                                                  *)
-(*  BSD 2-Clause License                                                            *)
-(*                                                                                  *)
-(*  This applies to all files in this archive except folder                         *)
-(*  "system-semantics".                                                             *)
-(*                                                                                  *)
-(*  Copyright (c) 2023,                                                             *)
-(*     Zongyuan Liu                                                                 *)
-(*     Angus Hammond                                                                *)
-(*     Jean Pichon-Pharabod                                                         *)
-(*     Thibaut Pérami                                                               *)
-(*                                                                                  *)
-(*  All rights reserved.                                                            *)
-(*                                                                                  *)
-(*  Redistribution and use in source and binary forms, with or without              *)
-(*  modification, are permitted provided that the following conditions are met:     *)
-(*                                                                                  *)
-(*  1. Redistributions of source code must retain the above copyright notice, this  *)
-(*     list of conditions and the following disclaimer.                             *)
-(*                                                                                  *)
-(*  2. Redistributions in binary form must reproduce the above copyright notice,    *)
-(*     this list of conditions and the following disclaimer in the documentation    *)
-(*     and/or other materials provided with the distribution.                       *)
-(*                                                                                  *)
-(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"     *)
-(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE       *)
-(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE  *)
-(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE    *)
-(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL      *)
-(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR      *)
-(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER      *)
-(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,   *)
-(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE   *)
-(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
-(*                                                                                  *)
+(**************************************************************************************)
+(*  BSD 2-Clause License                                                              *)
+(*                                                                                    *)
+(*  This applies to all files in this archive except folder                           *)
+(*  "system-semantics".                                                               *)
+(*                                                                                    *)
+(*  Copyright (c) 2023,                                                               *)
+(*       Zongyuan Liu                                                                 *)
+(*       Angus Hammond                                                                *)
+(*       Jean Pichon-Pharabod                                                         *)
+(*       Thibaut Pérami                                                               *)
+(*                                                                                    *)
+(*  All rights reserved.                                                              *)
+(*                                                                                    *)
+(*  Redistribution and use in source and binary forms, with or without                *)
+(*  modification, are permitted provided that the following conditions are met:       *)
+(*                                                                                    *)
+(*  1. Redistributions of source code must retain the above copyright notice, this    *)
+(*     list of conditions and the following disclaimer.                               *)
+(*                                                                                    *)
+(*  2. Redistributions in binary form must reproduce the above copyright notice,      *)
+(*     this list of conditions and the following disclaimer in the documentation      *)
+(*     and/or other materials provided with the distribution.                         *)
+(*                                                                                    *)
+(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"       *)
+(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE         *)
+(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE    *)
+(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE      *)
+(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL        *)
+(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR        *)
+(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER        *)
+(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,     *)
+(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE     *)
+(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.              *)
+(*                                                                                    *)
+(**************************************************************************************)
 
 (** This file contains the definition of the operational semantics *)
 From Coq Require Import ssreflect.
+
 From stdpp Require Import numbers bitvector.definitions.
+
+From SSCCommon Require Import CBase CSets GRel.
 
 From RecordUpdate Require Export RecordSet.
 Export RecordSetNotations.
-
-From SSCCommon Require Import CSets GRel.
 
 From self Require Import stdpp_extra.
 From self.lang Require Export mm.
 From self.lang Require Import instrs.
 
+
 Record RegVal := mk_regval {
-    reg_val : AAInter.reg_type; (* Val *)
+    reg_val : Val; 
     reg_dep : gset Eid;
 }.
 
@@ -97,7 +100,7 @@ End GInstrMem.
 
 (* thread state *)
 Module ThreadState.
-  Import AACandExec.
+  Import AACand.
   Definition progress : Type := (nat * nat).
 
   Module IntraInstrState.
@@ -135,7 +138,7 @@ Module ThreadState.
     |}.
 
   Definition reqs_done ts := ts.(ts_reqs) = EmptyInterp.
-  Definition next_req_is{T} ts (req: outcome T) k := ts.(ts_reqs) = (AAInter.Next req k).
+  Definition next_req_is {T} ts (req: AAInter.outcome T) k := ts.(ts_reqs) = (AAInter.Next req k).
 
   Definition mk_eid_ii ts tid :=
     EID.make tid ts.(ts_iis).(iis_iid) ts.(ts_iis).(iis_cntr).
@@ -143,7 +146,7 @@ Module ThreadState.
   Definition mk_iis_ni ts := mk_iis (ts.(ts_iis).(iis_iid) + 1).
 
   Definition incr_cntr ts : ThreadState.t :=
-    ts <| ts_iis := (ts.(ts_iis) <|iis_cntr := ((ts.(ts_iis).(iis_cntr)) + 1)%nat |>) |>.
+    (ts <| ts_iis := (ts.(ts_iis) <| iis_cntr := ((ts.(ts_iis).(iis_cntr)) + 1)%nat |>) |>).
   Definition reset_cntr ts : ThreadState.t :=
     ts <| ts_iis := mk_iis_ni ts |>.
 
@@ -151,7 +154,7 @@ Module ThreadState.
   Definition get_progress ts : progress :=
    (ts.(ThreadState.ts_iis).(iis_iid), ts.(ThreadState.ts_iis).(iis_cntr)).
 
-  Definition progress_of_node e : progress := (e.(EID.iid), e.(EID.num)).
+  Definition progress_of_node e : progress := (e.(EID.iid), e.(EID.ieid)).
   Definition progress_to_node ρ tid : Eid := (EID.make tid ρ.1 ρ.2).
 
   Lemma progress_to_node_of_node tid e :
@@ -201,12 +204,12 @@ Module ThreadState.
      (but without WF) for [step] *)
   Lemma progress_lt_po gr (tid : Tid) (pg pg' : progress):
     (* not true for initial writes *)
-    AACandExec.NMSWF.wf gr ->
+    NMSWF.wf gr ->
     (ThreadState.progress_lt pg pg'
      ∧ ThreadState.progress_is_valid gr tid pg
      ∧ ThreadState.progress_is_valid gr tid pg')
      <-> ((ThreadState.progress_to_node pg tid),
-          (ThreadState.progress_to_node pg' tid)) ∈ gr.(AACandExec.Candidate.po).
+          (ThreadState.progress_to_node pg' tid)) ∈ gr.(Candidate.po).
   Proof.
     intros Hwf.
     split.
@@ -219,14 +222,18 @@ Module ThreadState.
       - by simpl.
       - pose proof (tid_nz_nz tid). simpl. lia.
       - by simpl.
-      - by simpl.   
+      - by simpl.
     + intros.
       split.
       - unfold progress_lt.
         set (e1 := progress_to_node pg tid).
         set (e2 := progress_to_node pg' tid).
-        apply (Graph.po_to_pg_lt gr e1 e2); assumption.
-      - by apply Graph.po_valid_eids'.
+        apply (Graph.po_to_pg_lt gr e1 e2).
+        assumption.
+        destruct Hwf;naive_solver.
+      - apply Graph.po_valid_eids'.
+        done.
+        destruct Hwf;naive_solver.
   Qed.
 
   Definition progress_le (pg1 pg2 : progress) := (pg1.1 < pg2.1 ∨ (pg1.1 = pg2.1 ∧ pg1.2 <= pg2.2))%nat.
@@ -539,6 +546,7 @@ Section machine_mixin.
   }.
 End machine_mixin.
 
+
 Module LThreadStep.
   Import GInstrMem.
   Import AAInter.
@@ -582,14 +590,12 @@ Module LThreadStep.
     (* this thread is done *)
     t gs tid (LTSNormal ts) (LTSDone ts)
   | TStepRegRead ts r v ctxt :
-    let req := (RegRead r true) in
+    let req := (RegRead r ()) in
     (* current request is RegRead, [ctxt] is the continuation *)
     next_req_is ts req ctxt ->
-    (* let eid := (mk_eid_ii ts tid) in *)
     (* we can find an event with same request in graph, the response is [v] *)
     gs.(gs_graph) !! (mk_eid_ii ts tid) = Some (IEvent req v) ->
     (* (* there is a e_po_src -po-> eid *) *)
-    (* is_po gs.(gs_graph) ts.(ts_po_src) eid -> *)
     (* local reg has same value *)
     (∃ rv, ts.(ts_regs) !! r = Some rv ∧ rv.(reg_val) = v) ->
     (* increment [iis_cntr] and set [ctxt] as the new [ts_reqs] *)
@@ -597,7 +603,7 @@ Module LThreadStep.
                                           (*XXX <| ts_po_src := Some eid |> *)
                                                         <| ts_reqs := (ctxt v) |>))
   | TStepRegWrite ts r dep v ctxt :
-    let req := (RegWrite r true dep v) in
+    let req := (RegWrite r () v dep) in
     (* current request is RegWrite, [ctxt] is the continuation *)
     next_req_is ts req ctxt ->
     (* let eid := (mk_eid_ii ts tid) in *)
@@ -624,28 +630,15 @@ Module LThreadStep.
     (* incrementing [iis_cntr], updating [ts_ctrl_srcs], setting [ctxt] as the new [ts_reqs] *)
     t gs tid (LTSNormal ts) (LTSNormal ((incr_cntr ts) <| ts_ctrl_srcs := cond_dep ∪ ts.(ts_ctrl_srcs) |>
                                                        <| ts_reqs := (ctxt tt) |>))
-  | TStepBarrierDmb ts dκ ctxt:
-    let req := (AAInter.Barrier (AAArch.DMB dκ)) in
+  | TStepBarrier ts bk ctxt:
+    let req := (AAInter.Barrier bk) in
     (* current request is RegWrite, [ctxt] is the continuation *)
     next_req_is ts req ctxt ->
     let eid := (mk_eid_ii ts tid) in
     (* we can find an event with same request in graph, no response is expected*)
     gs.(gs_graph) !! eid = Some (IEvent req tt) ->
     (* there are e_ctrl_src -ctrl-> eid *)
-    (* FIXME, this allows for spurious ctrl edges, but this should be safe? *)
-    ((ts.(ts_ctrl_srcs)) × ({[eid]})) ⊆ (Candidate.ctrl gs.(gs_graph)) ->
-    (* incrementing [iis_cntr], updating [ts_po_src], setting [ctxt] as the new [ts_reqs] *)
-    t gs tid (LTSNormal ts) (LTSNormal ((incr_cntr ts) <| ts_reqs := (ctxt tt) |>))
-  | TStepBarrierIsb ts ctxt:
-    let req := (AAInter.Barrier AAArch.ISB) in
-    (* current request is RegWrite, [ctxt] is the continuation *)
-    next_req_is ts req ctxt ->
-    let eid := (mk_eid_ii ts tid) in
-    (* we can find an event with same request in graph, no response is expected*)
-    gs.(gs_graph) !! eid = Some (IEvent req tt) ->
-    (* there are e_ctrl_src -ctrl-> eid *)
-    ((ts.(ts_ctrl_srcs)) × ({[eid]})) ⊆ (Candidate.ctrl gs.(gs_graph)) ->
-    (* set_Forall (fun e_ctrl_src => is_ctrl gs.(gs_graph) e_ctrl_src eid) (ts.(ts_ctrl_srcs) -> *)
+    ((ts.(ts_ctrl_srcs)) × ({[eid]} : gset _) : Rel) ⊆ (Candidate.ctrl gs.(gs_graph)) ->
     (* incrementing [iis_cntr], updating [ts_po_src], setting [ctxt] as the new [ts_reqs] *)
     t gs tid (LTSNormal ts) (LTSNormal ((incr_cntr ts) <| ts_reqs := (ctxt tt) |>))
   | TStepReadMem ts sz rreq mv ctxt:
@@ -657,69 +650,56 @@ Module LThreadStep.
     (* we can find an event with same request in graph *)
     gs.(gs_graph) !! eid = Some (IEvent req resp) ->
     (* there are e_addr_src -addr-> eid *)
-    (* FIXME, this allows for spurious addr edges, but this should be safe? *)
-    ((deps_of_depon tid ts rreq.(ReadReq.addr_dep_on)) × ({[eid]})) ⊆ (Candidate.addr gs.(gs_graph)) ->
-    (* set_Forall (fun e_addr_src => (e_addr_src, eid) ∈ Candidate.addr gs.(gs_graph)) (deps_of_depon ts rreq.(ReadReq.addr_dep_on)) -> *)
+    ((deps_of_depon tid ts rreq.(ReadReq.addr_dep_on)) × ({[eid]} : gset _)) ⊆ (Candidate.addr gs.(gs_graph)) ->
     (* there are e_ctrl_src -ctrl-> eid *)
-    (* FIXME, this allows for spurious ctrl edges, but this should be safe? *)
-    ((ts.(ts_ctrl_srcs)) × ({[eid]})) ⊆ (Candidate.ctrl gs.(gs_graph)) ->
-    (* set_Forall (fun e_ctrl_src =>  (e_ctrl_src, eid) ∈ Candidate.ctrl gs.(gs_graph)) ts.(ts_ctrl_srcs) -> *)
+    ((ts.(ts_ctrl_srcs)) × ({[eid]} : gset _)) ⊆ (Candidate.ctrl gs.(gs_graph)) ->
     (* incrementing [iis_cntr], updating [ts_po_src], setting [ctxt] as the new [ts_reqs] *)
     t gs tid (LTSNormal ts) (LTSNormal ((incr_cntr (ts <| ts_iis := (ts.(ts_iis) <| iis_mem_reads := ((ts.(ts_iis).(iis_mem_reads)) ++ [ts.(ts_iis).(iis_cntr)] )|>)|>))
                                                        <| ts_reqs := (ctxt resp) |>
-                                                       <| ts_rmw_pred := if AACandExec.Candidate.kind_of_rreq_is_atomic rreq then Some eid else ts.(ts_rmw_pred) |>))
+                                                       <| ts_rmw_pred := if is_exclusive (rreq.(ReadReq.access_kind))
+                                                                           then Some eid else ts.(ts_rmw_pred) |>))
   | TStepWriteMem ts sz wreq ctxt:
-    AACandExec.Candidate.kind_of_wreq_is_atomic wreq = false ->
+    is_standalone wreq.(WriteReq.access_kind) = true ->
     let req := (MemWrite sz wreq) in
     (* current request is MemWrite, [ctxt] is the continuation *)
     next_req_is ts req ctxt ->
     let eid := (mk_eid_ii ts tid) in
-    let resp := (inl None) in
+    let resp := (inl true) in
     (* we can find an event with same request in graph, no response is expected*)
     gs.(gs_graph) !! eid = Some (IEvent req resp) ->
-    (* FIXME, all these dependency calculations allow for spurious dependencies,
-        but this should be safe as adding dependencies only decreases allowed behaviour? *)
     (* there are e_addr_src -addr-> eid *)
-    ((deps_of_depon tid ts wreq.(WriteReq.addr_dep_on)) × ({[eid]})) ⊆ (Candidate.addr gs.(gs_graph)) ->
-    (* set_Forall (fun e_addr_src => (e_addr_src, eid) ∈ Candidate.addr gs.(gs_graph)) (deps_of_depon ts wreq.(WriteReq.addr_dep_on)) -> *)
+    ((deps_of_depon tid ts wreq.(WriteReq.addr_dep_on)) × ({[eid]} : gset _)) ⊆ (Candidate.addr gs.(gs_graph)) ->
     (* there are e_data_src -data-> eid *)
-    ((deps_of_depon tid ts wreq.(WriteReq.data_dep_on)) × ({[eid]})) ⊆ (Candidate.data gs.(gs_graph)) ->
-    (* set_Forall (fun e_data_src => (e_data_src, eid) ∈ Candidate.data gs.(gs_graph)) (deps_of_depon ts wreq.(WriteReq.data_dep_on)) -> *)
+    ((deps_of_depon tid ts wreq.(WriteReq.data_dep_on)) × ({[eid]} : gset _)) ⊆ (Candidate.data gs.(gs_graph)) ->
     (* there are e_ctrl_src -ctrl-> eid *)
-    ((ts.(ts_ctrl_srcs)) × ({[eid]})) ⊆ (Candidate.ctrl gs.(gs_graph)) ->
-    (* set_Forall (fun e_ctrl_src => (e_ctrl_src, eid) ∈ Candidate.ctrl gs.(gs_graph)) ts.(ts_ctrl_srcs) -> *)
+    ((ts.(ts_ctrl_srcs)) × ({[eid]}: gset _)) ⊆ (Candidate.ctrl gs.(gs_graph)) ->
     (* incrementing [iis_cntr], updating [ts_po_src], setting [ctxt] as the new [ts_reqs] *)
     t gs tid (LTSNormal ts) (LTSNormal ((incr_cntr ts) <| ts_reqs := (ctxt resp) |>))
   | TStepWriteMemAtomicSucc ts sz wreq ctxt rmw_pred:
-    AACandExec.Candidate.kind_of_wreq_is_atomic wreq = true ->
+    is_exclusive wreq.(WriteReq.access_kind) = true ->
     ts.(ts_rmw_pred) = Some rmw_pred ->
     let req := (MemWrite sz wreq) in
     (* current request is MemWrite, [ctxt] is the continuation *)
     next_req_is ts req ctxt ->
     let eid := (mk_eid_ii ts tid) in
-    let resp := (inl (Some true)) in
+    let resp := (inl true) in
     (* we can find an event with same request in graph, respond with succuss*)
     gs.(gs_graph) !! eid = Some (IEvent req resp) ->
-    (rmw_pred, eid) ∈ (Candidate.rmw gs.(gs_graph)) ->
-    (* FIXME, all these dependency calculations allow for spurious dependencies,
-        but this should be safe as adding dependencies only decreases allowed behaviour? *)
+    (rmw_pred, eid) ∈ (Candidate.lxsx gs.(gs_graph)) ->
     (* there are e_addr_src -addr-> eid *)
-    ((deps_of_depon tid ts wreq.(WriteReq.addr_dep_on)) × ({[eid]})) ⊆ (Candidate.addr gs.(gs_graph)) ->
-    (* set_Forall (fun e_addr_src => (e_addr_src, eid) ∈ Candidate.addr gs.(gs_graph)) (deps_of_depon ts wreq.(WriteReq.addr_dep_on)) -> *)
+    ((deps_of_depon tid ts wreq.(WriteReq.addr_dep_on)) × ({[eid]} : gset _)) ⊆ (Candidate.addr gs.(gs_graph)) ->
     (* there are e_data_src -data-> eid *)
-    ((deps_of_depon tid ts wreq.(WriteReq.data_dep_on)) × ({[eid]})) ⊆ (Candidate.data gs.(gs_graph)) ->
-    (* set_Forall (fun e_data_src => (e_data_src, eid) ∈ Candidate.data gs.(gs_graph)) (deps_of_depon ts wreq.(WriteReq.data_dep_on)) -> *)
+    ((deps_of_depon tid ts wreq.(WriteReq.data_dep_on)) × ({[eid]} : gset _)) ⊆ (Candidate.data gs.(gs_graph)) ->
     (* there are e_ctrl_src -ctrl-> eid *)
-    ((ts.(ts_ctrl_srcs)) × ({[eid]})) ⊆ (Candidate.ctrl gs.(gs_graph)) ->
-    (* set_Forall (fun e_ctrl_src => (e_ctrl_src, eid) ∈ Candidate.ctrl gs.(gs_graph)) ts.(ts_ctrl_srcs) -> *)
+    ((ts.(ts_ctrl_srcs)) × ({[eid]}: gset _)) ⊆ (Candidate.ctrl gs.(gs_graph)) ->
     (* incrementing [iis_cntr], updating [ts_po_src], setting [ctxt] as the new [ts_reqs] *)
     t gs tid (LTSNormal ts) (LTSNormal ((incr_cntr ts) <| ts_reqs := (ctxt resp) |>))
   | TStepWriteMemAtomicFail ts sz wreq ctxt:
-    AACandExec.Candidate.kind_of_wreq_is_atomic wreq = true ->
+    is_exclusive wreq.(WriteReq.access_kind) = true ->
     let req := (MemWrite sz wreq) in
     next_req_is ts req ctxt ->
     let eid := (mk_eid_ii ts tid) in
-    let resp := (inl (Some false)) in
+    let resp := (inl false) in
     (* we can find an event with same request in graph, respond with failure*)
     gs.(gs_graph) !! eid = Some (IEvent req resp) ->
     (* incrementing [iis_cntr], updating [ts_po_src], setting [ctxt] as the new [ts_reqs] *)
@@ -801,7 +781,7 @@ Module LThreadStep.
     at_progress lts pg ->
     ¬ progress_is_valid (gs_graph gs) tid pg.
   Proof.
-    inversion 1 as [ |??????Hdone| | | | | | | | |];inversion 1;subst.
+    inversion 1 as [ |??????Hdone| | | | | | | |];inversion 1;subst.
     inversion 1. intros ?.
     specialize (Hdone (progress_to_node pg tid)).
     subst pg. ospecialize* Hdone.
@@ -835,7 +815,6 @@ Module LThreadStep.
       + ospecialize* Hinv;eauto. exfalso. eapply progress_le_gt_False;eauto.
     - exfalso. epose proof ts_is_done_thd_inv as Hinv.
       ospecialize* Hinv; eauto. eapply progress_le_gt_False;eauto.
-    - eapply progress_adjacent_incr_cntr;eauto.
     - eapply progress_adjacent_incr_cntr;eauto.
     - eapply progress_adjacent_incr_cntr;eauto.
     - eapply progress_adjacent_incr_cntr;eauto.
@@ -1135,7 +1114,7 @@ Module LThreadStep.
   Qed.
 
   Lemma eids_from_init_po_pred_of gr (tid : Tid) pg:
-    AACandExec.NMSWF.wf gr ->
+    NMSWF.wf gr ->
     progress_is_valid gr tid pg ->
     po_pred_of gr (ThreadState.progress_to_node pg tid) = eids_from_init gr tid pg.
   Proof.
@@ -1145,7 +1124,11 @@ Module LThreadStep.
     - intro Hpo.
       set_unfold in Hpo.
       destruct Hpo as [e' [-> Hpo]].
-      assert(Heid : EID.tid e = tid). { pose (G:= Graph.po_valid_eids gr e (progress_to_node pg tid) Hwf Hpo). destruct G as [_ ->]. by simpl. }
+      assert(Heid : EID.tid e = tid).
+      {
+        assert (po_wf gr). destruct Hwf;naive_solver.
+        pose (G:= Graph.po_valid_eids gr e (progress_to_node pg tid) Hwf Hpo). destruct G as [_ ->]. by simpl.
+      }
       pose proof (progress_lt_po _ tid (progress_of_node e) pg Hwf) as [_ Himp].
       ospecialize* Himp. rewrite progress_to_node_of_node //.
       destruct Himp as [Hlt [Hvalide Hvalid']].
@@ -1214,7 +1197,7 @@ Module LThreadStep.
     rewrite /eids_from_init in Hept. rewrite Hept.
     rewrite difference_empty_L.
     apply nsteps_inv_r in Hstep. destruct Hstep as [? [? Hstep]].
-    inversion Hstep as [ | ? ? ? ? ? Hdone | | | | | | | | | ];subst;try inversion Hterm.
+    inversion Hstep as [ | ? ? ? ? ? Hdone | | | | | | | | ];subst;try inversion Hterm.
     apply set_eq. intro. rewrite /local_eids 3!elem_of_filter.
     split.
     - intros [Htid Hin]. split;last done.

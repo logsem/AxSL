@@ -1,0 +1,14 @@
+# dune coq top base.v --display=short -- -emacs
+# OCAMLPARAM: unset
+# Shared cache: enabled-except-user-rules
+# Shared cache location: /Users/zongyuan/.cache/dune/db
+# Workspace root: /Users/zongyuan/code/axsl/theories/algebra
+# Dune context:
+#  { name = "default"
+#  ; kind = "default"
+#  ; profile = Dev
+#  ; merlin = true
+#  ; fdo_target_exe = None
+#  ; build_dir = In_build_dir "default"
+#  ; instrument_with = []
+#  }

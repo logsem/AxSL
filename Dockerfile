@@ -1,5 +1,5 @@
 ARG BASE_TAG="latest"
-FROM coqorg/coq:8.18.0-ocaml-4.14.2-flambda
+FROM coqorg/coq:8.19.2-ocaml-4.14.2-flambda
 
 COPY --chown=coq . /artifact/axsl
 WORKDIR /artifact
@@ -17,12 +17,12 @@ RUN opam install axsl/. --deps-only -y
 
 RUN git clone https://github.com/rems-project/coq-sail \
     && cd coq-sail \
-    && git checkout 5150697 \
+    && git checkout 4bcec15 \
     && opam pin . -y
 
 RUN git clone https://github.com/tchajed/iris-named-props.git \
     && cd iris-named-props \
-    && git checkout a890750 \
+    && git checkout 3cf2d97 \
     && opam pin . -y
 
 RUN opam list \

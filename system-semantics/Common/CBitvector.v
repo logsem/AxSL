@@ -1,585 +1,187 @@
-(*                                                                               *)
-(*  BSD 2-clause License                                                         *)
-(*                                                                               *)
-(*  This applies to all files in this archive except folder                      *)
-(*  "armv9-instantiation-types" or where specified otherwise.                    *)
-(*                                                                               *)
-(*  Copyright (c) 2022                                                           *)
-(*    Thibaut Pérami                                                             *)
-(*    Jean Pichon-Pharabod                                                       *)
-(*    Brian Campbell                                                             *)
-(*    Alasdair Armstrong                                                         *)
-(*    Ben Simner                                                                 *)
-(*    Peter Sewell                                                               *)
-(*                                                                               *)
-(*  All rights reserved.                                                         *)
-(*                                                                               *)
-(*  Redistribution and use in source and binary forms, with or without           *)
-(*  modification, are permitted provided that the following conditions           *)
-(*  are met:                                                                     *)
-(*                                                                               *)
-(*    * Redistributions of source code must retain the above copyright           *)
-(*      notice, this list of conditions and the following disclaimer.            *)
-(*    * Redistributions in binary form must reproduce the above copyright        *)
-(*      notice, this list of conditions and the following disclaimer in the      *)
-(*      documentation and/or other materials provided with the distribution.     *)
-(*                                                                               *)
-(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS          *)
-(*  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT            *)
-(*  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A      *)
-(*  PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER    *)
-(*  OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,     *)
-(*  EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,          *)
-(*  PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;  *)
-(*  OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,     *)
-(*  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR      *)
-(*  OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF       *)
-(*  ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.                                   *)
-(*                                                                               *)
-
 (** Unfortunately this development needs to support two kinds of bitvector.
     The module will attempt to provide smooth interoperability between the two *)
 
+
+Require Import Options.
 Require Import Lia.
-Require Export stdpp.bitvector.definitions.
+Require Import stdpp.decidable.
+Require Import stdpp.countable.
+Require Import stdpp.vector.
+Require Export stdpp.bitvector.bitvector.
 Require Export stdpp.bitvector.tactics.
-Require Export bbv.Word.
 Require Import CBase.
 Require Import CBool.
-Require Import Coq.Logic.Eqdep. (* <- This assumes UIP *)
-
-From Hammer Require Import Tactics.
+Require Import CList.
 
 
-(*** Dependent types stuff ***)
-
-Lemma symmetry_symmetry {A} (x y : A) (e : x = y) :
-  symmetry (symmetry e) = e.
-Proof. sfirstorder. Qed.
-#[global] Hint Rewrite @symmetry_symmetry : core.
-
-Section Transport.
-  Context {A : Type}.
-  Context (P : A -> Type).
-
-  (* I love dependent types /s *)
-  Definition transport {x y : A} (e : x = y) (t : P x) : P y :=
-    match e with
-    | eq_refl => t
-    end.
-
-  (* This equivalent to eq_rect_eq which is itself equivalent to UIP *)
-  Lemma transport_simpl {x} (e : x = x) (t : P x) :
-    transport e t = t.
-  Proof.
-    unfold transport.
-    rewrite (eq_rect_eq A x P t e) at 2. (* <- This is where UIP is used *)
-    unfold eq_rect.
-    reflexivity.
-  Qed.
-
-  Lemma transport_eq_trans {x y z} (e : x = y) (e' : y = z) (t : P x) :
-    t |> transport e |> transport e' = t |> transport (eq_trans e e').
-  Proof. sfirstorder. Qed.
-
-  Lemma transport_symmetry {x y : A} (e : x = y) (a : P x) (b : P y) :
-    a = transport (symmetry e) b <-> transport e a = b.
-  Proof. sfirstorder. Qed.
-
-  Lemma transport_eq_dep {x y : A} (a : P x) (b : P y) :
-    eq_dep A P x a y b <-> exists e : y = x, a = transport e b.
-  Proof.
-    split.
-    - unfold transport.
-      destruct 1.
-      exists eq_refl.
-      reflexivity.
-    - destruct 1 as [e H].
-      destruct e.
-      unfold transport in H.
-      rewrite H.
-      constructor.
-  Qed.
-
-  Lemma transport_fdep (f : forall A, P A) {x y : A} (e : x = y) :
-    f y = transport e (f x).
-  Proof. hauto use:transport_simpl. Qed.
-
-End Transport.
-Arguments transport_fdep {_ _} _ {_ _}.
-
-Ltac transport_symmetry :=
-  lazymatch goal with
-  | |- ?a = transport ?P ?e ?b => symmetry; apply transport_symmetry; symmetry
-  | |- transport ?P ?e ?a = ?b => apply transport_symmetry
-  end.
-
-#[global] Hint Rewrite @transport_simpl : transport.
-#[global] Hint Rewrite @transport_eq_trans : transport.
-
-Lemma transport_func {A B} {P : A -> Type} {x y : A} (e : x = y) (b : B)
-  (f : B -> P x)
-  : (transport (fun x : A => B -> P x) e f) b = transport P e (f b).
-Proof.
-  hauto db:transport.
-Qed.
-#[global] Hint Rewrite @transport_func : transport.
-
-
-
-(*** Arithmetic helper stuff ***)
-
-(* Makes lia able to handle euclidean division, which makes bv_solve,
-   bv_solve' and bv_word_solve able to handle concat and extract *)
-Ltac Zify.zify_convert_to_euclidean_division_equations_flag ::= constr:(true).
-
-(* These need to be easily available to create equalities directly in Gallina *)
-Arguments N2Nat.id {_}.
-Arguments Nat2N.id {_}.
-
-Lemma eq_N_to_nat {n m : N} :
-  n = m -> N.to_nat n = N.to_nat m.
-Proof. lia. Qed.
-
-Lemma eq_nat_to_N {n m : nat} :
-  n = m -> N.of_nat n = N.of_nat m.
-Proof. lia. Qed.
-
-
-(* The arith rewrite database helps simplify arithmetic *)
-#[global] Hint Rewrite N_nat_Z : arith.
-#[global] Hint Rewrite nat_N_Z : arith.
-#[global] Hint Rewrite @N2Nat.id : arith.
-#[global] Hint Rewrite @Nat2N.id : arith.
-(* #[global] Hint Rewrite @Zmod_mod : arith. *)
-
-
-(* Reduce concrete arithmetic values to help lia. This is a tactic from stdpp bitvector
-   that is redefined so it will also affect development done there*)
-Ltac reduce_closed_N ::=
-  reduce_closed_N_tac;
-  repeat match goal with
-    | |- context [Pos.to_nat ?a] => progress reduce_closed (Pos.to_nat a)
-    | H: context [Pos.to_nat ?a] |- _ => progress reduce_closed (Pos.to_nat a)
-    | |- context [N.to_nat ?a] => progress reduce_closed (N.to_nat a)
-    | H: context [N.to_nat ?a] |- _ => progress reduce_closed (N.to_nat a)
-    | |- context [N.of_nat ?a] => progress reduce_closed (N.of_nat a)
-    | H: context [N.of_nat ?a] |- _ => progress reduce_closed (N.of_nat a)
-    | |- context [Z.to_nat ?a] => progress reduce_closed (Z.to_nat a)
-    | H: context [Z.to_nat ?a] |- _ => progress reduce_closed (Z.to_nat a)
-    | |- context [Z.of_nat ?a] => progress reduce_closed (Z.of_nat a)
-    | H: context [Z.of_nat ?a] |- _ => progress reduce_closed (Z.of_nat a)
-    | |- context [N.add ?a ?b] => progress reduce_closed (N.add a b)
-    | H : context [N.add ?a ?b] |- _ => progress reduce_closed (N.add a b)
-    end.
-
-Ltac simplify_arith :=
-  reduce_closed_N;
-  (try rewrite_strat topdown hints arith);
-  repeat match goal with
-    | H : _ |- _ => progress rewrite_strat topdown hints arith in H
-    end.
-
-
-(*** Bitvector decision ***)
-
-(* Interface Equality decision for words (from bbv) *)
-Global Instance word_eq_dec n : EqDecision (word n).
-Proof.
-  unfold EqDecision.
-  unfold Decision.
-  apply weq.
+(** Heterogenous equality decision *)
+#[export] Instance bv_eqdep_dec : EqDepDecision bv.
+Proof using.
+  intros ? ? ? a b.
+  destruct decide (bv_unsigned a = bv_unsigned b).
+  - left. abstract naive_solver use bv_eq.
+  - right. abstract (subst; rewrite JMeq_simpl; naive_solver).
 Defined.
 
-(* This is already instanciated for bv *)
-
-(*** word rewrite database ***)
-
-(* The word database simplifies word related expressions *)
-
-#[global] Hint Rewrite @uwordToZ_ZToWord using unfold bv_modulus in *;lia : word.
-#[global] Hint Rewrite @ZToWord_uwordToZ : word.
-
-Lemma transport_ZToWord {n m : nat} (e : n = m) (z : Z) :
-  transport word e (ZToWord n z) = ZToWord m z.
-Proof. scongruence. Qed.
-#[global] Hint Rewrite @transport_ZToWord : word.
-
-Lemma transport_uwordToZ (n m : nat) (w : word n) (e : n = m):
-  uwordToZ (transport word e w) = uwordToZ w.
-Proof. scongruence. Qed.
-#[global] Hint Rewrite transport_uwordToZ : word.
-
-Lemma transport_wordToZ (n m : nat) (w : word n) (e : n = m):
-  wordToZ (transport word e w) = wordToZ w.
-Proof. scongruence. Qed.
-#[global] Hint Rewrite transport_wordToZ : word.
-
-Lemma transport_wordToN (n m : nat) (w : word n) (e : n = m):
-  wordToN (transport word e w) = wordToN w.
-Proof. scongruence. Qed.
-#[global] Hint Rewrite transport_wordToN : word.
 
 
-(* Do a transport_symmetry only if it enables immediate progress on
-   either side of the equality *)
-Ltac transport_symmetry_word :=
-  transport_symmetry; rewrite_strat subterm hints word.
+(** This make lia slower and more powerful. I think it's better with it on *)
+Ltac Zify.zify_convert_to_euclidean_division_equations_flag ::= constr:(true).
 
-(*** bv rewrite database ***)
+(** * Computable transport instance
+
+This implements the transport along bitvector size equality in computable way.*)
+
+#[export] Instance ctrans_bv : CTrans bv :=
+  λ n m H b,
+    (* Implementation is keep the z and do a non-computable transport of the
+       proof. This can break things like reflexivity, but people should use
+       [bv_eq] *)
+    let '(@BV _ z wf) := b in
+    let wf' := match H with eq_refl => wf end
+    in @BV m z wf'.
+
+#[export] Instance ctrans_bv_simpl : CTransSimpl bv.
+Proof. intros ?? []. bv_solve. Qed.
+Opaque ctrans_bv.
+
+Lemma bv_unfold_ctrans_bv n m (e : n = m) s w b z:
+  BvUnfold n s w b z → BvUnfold m s w (ctrans e b) z.
+Proof. tcclean. subst. simp ctrans. Qed.
+#[global] Hint Resolve bv_unfold_ctrans_bv : bv_unfold_db.
+
+Lemma ctrans_bv_0 `(H : n = m) : ctrans H (bv_0 n) = bv_0 m.
+Proof. bv_solve. Qed.
+#[export] Hint Rewrite @ctrans_bv_0 : ctrans bv_simplify.
+
+Lemma ctrans_Z_to_bv `(H : n = m) z : ctrans H (Z_to_bv n z) = Z_to_bv m z.
+Proof. bv_solve. Qed.
+#[export] Hint Rewrite @ctrans_Z_to_bv : ctrans bv_simplify.
+
+Lemma bv_unsigned_ctrans `(H : n = m) b :
+  bv_unsigned (ctrans H b) = bv_unsigned b.
+Proof. bv_solve. Qed.
+#[export] Hint Rewrite @bv_unsigned_ctrans : ctrans bv_simplify.
+
+Lemma ctrans_bv_extract i `(H : n = m) `(b : bv p) :
+  ctrans H (bv_extract i n b) = bv_extract i m b.
+Proof. bv_solve. Qed.
+#[export] Hint Rewrite @ctrans_bv_extract : ctrans bv_simplify.
+
+Lemma bv_extract_ctrans `(H : n = m) `(b : bv n) i l :
+  bv_extract i l (ctrans H b) = bv_extract i l b.
+Proof. bv_solve. Qed.
+#[export] Hint Rewrite @bv_extract_ctrans : ctrans bv_simplify.
+
+(** * Rewrite databases *)
 
 Lemma bv_wrap_bv_unsigned' {n m} (b : bv m) :
   n = m -> bv_wrap n (bv_unsigned b) = bv_unsigned b.
 Proof. intro H. rewrite H. apply bv_wrap_bv_unsigned. Qed.
-#[global] Hint Rewrite @bv_wrap_bv_unsigned' using lia : bv.
+#[global] Hint Rewrite @bv_wrap_bv_unsigned' using lia : bv_unfolded_arith.
 
-Lemma bv_wrap_uwordToZ {n m} (w : word m) :
-  n = N.of_nat m -> bv_wrap n (uwordToZ w) = uwordToZ w.
-Proof.
-  intro H.
-  rewrite bv_wrap_small.
-  - reflexivity.
-  - use uwordToZ_bound.
-    unfold bv_modulus.
-    sauto lq:on.
-Qed.
-#[global] Hint Rewrite @bv_wrap_uwordToZ using lia : bv.
-
-#[global] Hint Rewrite Z_to_bv_small
-  using unfold bv_modulus in *; lia : bv.
 #[global] Hint Rewrite bv_wrap_small
-  using unfold bv_modulus in *; lia : bv.
-#[global] Hint Rewrite bv_wrap_bv_wrap using lia : bv.
-#[global] Hint Rewrite bv_extract_concat_here using lia : bv.
-#[global] Hint Rewrite bv_extract_concat_later using lia : bv.
-#[global] Hint Rewrite Z_to_bv_unsigned : bv.
-#[global] Hint Rewrite Z_to_bv_bv_unsigned : bv.
+  using unfold bv_modulus in *; lia : bv_unfolded_arith.
+#[global] Hint Rewrite Z_to_bv_bv_unsigned : bv_simplify.
 
 
-Lemma transport_Z_to_bv {n m : N} (e : n = m) (z : Z) :
-  transport bv e (Z_to_bv n z) = Z_to_bv m z.
-Proof. scongruence. Qed.
-#[global] Hint Rewrite @transport_Z_to_bv : bv.
-#[global] Hint Rewrite @transport_Z_to_bv : bv_simplify.
+Lemma bv_add_Z_bv_unsigned n (b b' : bv n) : (b `+Z` bv_unsigned b' = b + b')%bv.
+Proof. bv_solve. Qed.
+#[export] Hint Rewrite bv_add_Z_bv_unsigned : bv_simplify.
 
-Lemma transport_bv_unsigned (n m i l : N) (b : bv n) (e : n = m):
-  bv_unsigned (transport bv e b) = bv_unsigned b.
-Proof. scongruence. Qed.
-#[global] Hint Rewrite transport_bv_unsigned : bv.
-#[global] Hint Rewrite transport_bv_unsigned : bv_simplify.
+#[export] Hint Rewrite Z2N.id using bv_solve : bv_simplify.
 
-Lemma transport_bv_extract1 (n m i l : N) (b : bv n) (e : n = m):
-  bv_extract i l (transport bv e b) = bv_extract i l b.
-Proof. scongruence. Qed.
-#[global] Hint Rewrite transport_bv_extract1 : bv.
-#[global] Hint Rewrite transport_bv_extract1 : bv_simplify.
-
-Lemma transport_bv_extract2 (n i l l' : N) (b : bv n) (e : l = l'):
-  transport bv e (bv_extract i l b) = bv_extract i l' b.
-Proof. scongruence. Qed.
-#[global] Hint Rewrite transport_bv_extract2 : bv.
-#[global] Hint Rewrite transport_bv_extract2 : bv_simplify.
-
-Ltac transport_symmetry_bv :=
-  transport_symmetry; rewrite_strat subterm hints bv.
+(** * [bv_solve] improvements *)
 
 
+(** We redefine bv_solve to end with [lia || f_equal; lia]. This is because on
+    some goals where the size is universally quantified, the extra bv_wrap n on
+    either size confuse [lia], but on the other hand, if the size is universally
+    quantified we are happy to prove the equality without wrapping.*)
+Ltac bv_solve ::=
+  bv_simplify_arith;
+  (* we unfold signed so we just need to saturate unsigned *)
+  bv_saturate_unsigned;
+  bv_solve_unfold_tac;
+  unfold bv_signed, bv_swrap, bv_wrap, bv_half_modulus, bv_modulus, bv_unsigned in *;
+  simpl;
+  (lia || f_equal; lia).
 
-(*** bv to word and back conversions ***)
-
-Definition bv_to_word {n} (b : bv n) : word (N.to_nat n) :=
-  ZToWord (N.to_nat n) (bv_unsigned b).
-
-Definition word_to_bv {n} (b : word n) : bv (N.of_nat n) :=
-  Z_to_bv (N.of_nat n) (uwordToZ b).
-
-
-Lemma word_to_bv_to_word' {n} (b : word n) :
-  b |> word_to_bv |> bv_to_word |> transport word Nat2N.id =  b.
-Proof.
-  unfold word_to_bv, bv_to_word.
-  sauto lq:on db:bv,word use:uwordToZ_bound.
-Qed.
-#[global] Hint Rewrite @word_to_bv_to_word' : word.
-
-Lemma word_to_bv_to_word {n} (b : word n) :
-  b |> word_to_bv |> bv_to_word = transport word (symmetry Nat2N.id) b.
-Proof.
-  transport_symmetry.
-  autorewrite with core word.
-  reflexivity.
-Qed.
-#[global] Hint Rewrite @word_to_bv_to_word : word.
-
-Lemma bv_to_word_to_bv' {n} (b : bv n) :
-  b |> bv_to_word |> word_to_bv |> transport bv N2Nat.id = b.
-Proof.
-  unfold word_to_bv. unfold bv_to_word.
-  hauto lq:on db:bv,word,arith use:bv_unsigned_in_range.
-Qed.
-#[global] Hint Rewrite @bv_to_word_to_bv' : bv.
-
-Lemma bv_to_word_to_bv {n} (b : bv n) :
-  b |> bv_to_word |> word_to_bv = transport bv (symmetry N2Nat.id) b.
-Proof.
-  transport_symmetry.
-  autorewrite with core bv.
-  reflexivity.
-Qed.
-#[global] Hint Rewrite @bv_to_word_to_bv : bv.
-#[global] Hint Rewrite @bv_to_word_to_bv : bv_simplify.
-
-
-Lemma transport_word_to_bv (n m : nat) (w : word n) (e : n = m):
-  word_to_bv (transport word e w) = transport bv (eq_nat_to_N e) (word_to_bv w).
-Proof.
-  unfold word_to_bv.
-  autorewrite with bv word.
-  reflexivity.
-Qed.
-#[global] Hint Rewrite transport_word_to_bv : bv.
-
-
-(* Doing `rewrite bv_to_word_to_bv` sometimes fails, if bitvector size are
-   too concrete, this tactic perform the rewrite anyway *)
-Ltac bv_to_word_to_bv :=
-  match goal with
-  | |- context C [@word_to_bv ?m (@bv_to_word ?n ?b)] =>
-      let H := fresh "H" in
-      assert_succeeds (enough (H : m = N.to_nat n);[| reflexivity]);
-      let nG := context C [@word_to_bv (N.to_nat n) (@bv_to_word n b)] in
-      let G := fresh "G" in
-      enough (G : nG);[exact G| rewrite bv_to_word_to_bv]
-  | Hyp : context C [@word_to_bv ?m (@bv_to_word ?n ?b)] |- _ =>
-      let H := fresh "H" in
-      assert_succeeds (enough (H : m = N.to_nat n);[| reflexivity]);
-      let nG := context C [@word_to_bv (N.to_nat n) (@bv_to_word n b)] in
-      let G := fresh "G" in
-      rename Hyp into G;
-      assert (Hyp : nG);
-      [assumption | clear G; rewrite bv_to_word_to_bv in Hyp]
-  end.
-
-(* Doing `rewrite word_to_bv_to_word` sometimes fails, if bitvector size are
-   too concrete, this tactic perform the rewrite anyway *)
-Ltac word_to_bv_to_word :=
-  match goal with
-  | |- context C [@bv_to_word ?m (@word_to_bv ?n ?w)] =>
-      let H := fresh "H" in
-      assert_succeeds (enough (H : m = N.of_nat n);[| reflexivity]);
-      let nG := context C [@bv_to_word (N.of_nat n) (@word_to_bv n w)] in
-      let G := fresh "G" in
-      enough (G : nG);[exact G| rewrite word_to_bv_to_word]
-  | Hyp : context C [@bv_to_word ?m (@word_to_bv ?n ?w)] |- _ =>
-      let H := fresh "H" in
-      assert_succeeds (enough (H : m = N.of_nat n);[| reflexivity]);
-      let nG := context C [@bv_to_word (N.of_nat n) (@word_to_bv n w)] in
-      let G := fresh "G" in
-      rename Hyp into G;
-      assert (Hyp : nG);
-      [assumption | clear G; rewrite word_to_bv_to_word in Hyp]
-  end.
-
-(*** Convert a mixed bv + word goal into a pure bv goal ***)
-
-Lemma word_to_bv_eq {n : nat} (w w' : word n) :
-  word_to_bv w = word_to_bv w' <-> w = w'.
-Proof.
-  split.
-  + unfold word_to_bv.
-    intro H.
-    apply (f_equal bv_unsigned) in H.
-    hauto db:bv use:ZToWord_uwordToZ.
-  + scongruence.
-Qed.
-
-Lemma word_to_bv_neq {n : nat} (w w' : word n) :
-  word_to_bv w ≠ word_to_bv w' <-> w ≠ w'.
-Proof. rewrite word_to_bv_eq. reflexivity. Qed.
-
-
-(* Replace the variable w of type by an equivalent variable of type bv *)
-Ltac remove_word_var w :=
-  let w2 := fresh "w" in
-  rename w into w2;
-  rewrite <- (word_to_bv_to_word' w2) in *;
-  set (w := word_to_bv w2) in *;
-  clearbody w;
-  clear w2;
-  autorewrite with bv word transport in *;
-  reduce_closed_N.
-
-(* Replace all context variables of type word by equivalent variables of type
-bv *)
-Ltac remove_word_vars :=
-  repeat (match goal with
-          | w : ?T |- _ => eunify T (word _); remove_word_var w end).
-
-(* Replace a word equality by a bitvector equality *)
-Ltac remove_word_eq :=
-  match goal with
-  | |- ?w = ?w' =>
-      let t := type of w in
-      eunify t (word _);
-      apply word_to_bv_eq
-  | |- ?w ≠ ?w' =>
-      let t := type of w in
-      eunify t (word _);
-      apply word_to_bv_neq
-  | H : ?w = ?w' |- _ =>
-      let t := type of w in
-      eunify t (word _);
-      apply word_to_bv_eq in H
-  | H : ?w ≠ ?w' |- _ =>
-      let t := type of w in
-      eunify t (word _);
-      apply word_to_bv_neq in H
-  end.
-
-(* Replace a word equality by a bitvector equality *)
-Ltac remove_word_eqs :=
-  repeat remove_word_eq.
-
-Ltac remove_words :=
-  remove_word_vars; remove_word_eqs.
-
-
-(*** bv_solve improvements ***)
-
-
-(* Full bitvector simplification for both word and bv, contrary to bv_simplify,
-   it does not move the goal to Z. Equalities in bv will stay in bv *)
-Ltac bv_word_simp :=
-  (* TODO maybe move to rewrite_strat if quantifier rewriting is needed *)
-  repeat (autorewrite with bv word transport arith in *;
-          try bv_to_word_to_bv;
-          try word_to_bv_to_word).
-
-
-(* Makes bv_unfold slower but more powerful, we'll see if that is better. *)
-Global Hint Constants Transparent : bv_unfold_db.
-
-(* Support transport in bv_simplify, bv_solve *)
-Lemma bv_unfold_transport n m s w (e : n = m) (b : bv n) z:
-  BvUnfold n s w b z ->
-  BvUnfold m s w (transport bv e b) z.
-Proof. scongruence. Qed.
-Global Hint Resolve bv_unfold_transport | 10 : bv_unfold_db.
-Global Hint Extern 20 => apply bv_unfold_transport : bv_unfold_db.
-
-(** Simplify all bitvector equation in Z equations everywhere. Aimed for
-    bitblast and bit by bit analysis*)
+(** Simplify all bitvector and Z equations everywhere and not just the goal like
+    [bv_simplify]. Aimed for bitblast and bit by bit analysis*)
 Ltac bv_simplify' :=
   forall_hyps ltac:(fun H => bv_simplify H); bv_simplify.
 
-(** Simplify all bitvector equation in Z equations everywhere. Aimed for
-    lia and arithmetic analysis*)
+
+(** Simplify all bitvector and Z equations everywhere and not just the
+    goal like [bv_simplify_arith]. Aimed for lia and arithmetic analysis*)
 Ltac bv_simplify_arith' :=
   forall_hyps ltac:(fun H => bv_simplify_arith H); bv_simplify_arith.
 
-(** Improvement of bv_solve that also simplifies the hypothesis *)
+(** Version of bv_solve that also simplifies the hypotheses *)
 Ltac bv_solve' :=
   forall_hyps ltac:(fun H => bv_simplify_arith H); bv_solve.
 
-(** Solve a goal with mixed word and bv reasoning, with lia as backend.
-    Therefore it will not support bitwise and, or and xor. *)
-Ltac bv_word_solve' := remove_words; bv_word_simp; bv_solve'.
 
-Ltac bv_word_solve :=
-  match goal with
-  | |- _ =@{?T} _ => (eunify T (bv _) + eunify T (word _))
-  | |- _ ≠@{?T} _ => (eunify T (bv _) + eunify T (word _))
-  | H : _ =@{?T} _ |- _ => (eunify T (bv _) + eunify T (word _)); exfalso
-  | H : _ ≠@{?T} _ |- _ => (eunify T (bv _) + eunify T (word _)); exfalso
-  end; bv_word_solve'.
-
-
-
-(* TODO improve performance *)
-
-(*** Convert word operation to bv operations ***)
-
-Lemma word_to_bv_ZToWord n z :
-  word_to_bv (ZToWord n z) = Z_to_bv (N.of_nat n) z.
-Proof.
-  destruct n.
-  - setoid_rewrite word0.
-    bv_solve.
-  - unfold word_to_bv.
-    rewrite uwordToZ_ZToWord_full; [|lia].
-    bv_simplify_arith'.
-    bv_word_simp.
-    reflexivity.
-Qed.
-#[global] Hint Rewrite word_to_bv_ZToWord : bv.
-
-Lemma word_to_bv_natToWord n m :
-  word_to_bv (natToWord n m) = Z_to_bv (N.of_nat n) (Z.of_nat m).
-Proof.
-  rewrite <- ZToWord_Z_of_nat.
-  bv_word_solve.
-Qed.
-#[global] Hint Rewrite word_to_bv_natToWord : bv.
-
-Lemma word_to_bv_NToWord n m :
-  word_to_bv (NToWord n m) = Z_to_bv (N.of_nat n) (Z.of_N m).
-Proof.
-  rewrite <- ZToWord_Z_of_N.
-  bv_word_solve.
-Qed.
-#[global] Hint Rewrite word_to_bv_NToWord : bv.
-
-Lemma uwordToZ_bv_to_word n (b : bv n):
-  uwordToZ (bv_to_word b) = bv_unsigned b.
-Proof.
-  unfold bv_to_word.
-  hauto lq:on db:bv,word,arith use:bv_unsigned_in_range.
-Qed.
-#[global] Hint Rewrite uwordToZ_bv_to_word : bv.
-
-(* I need this because fold won't work *)
-Lemma uwordToZ_def sz (w : word sz) : Z.of_N (wordToN w) = uwordToZ w.
-  Proof. reflexivity. Qed.
-#[global] Hint Rewrite uwordToZ_def : word.
-
-
-Lemma word_to_bv_wplus n (w w' : word n) :
-  word_to_bv (wplus w w') = (word_to_bv w + word_to_bv w')%bv.
-Proof.
-  unfold wplus,wordBin.
-  remove_words.
-  rewrite N2Z.inj_add.
-  bv_word_solve.
-Qed.
-#[global] Hint Rewrite word_to_bv_wplus : bv.
-
-
-
-
-
-(*** Extra bitvector function ***)
+(** * Extra bitvector functions *)
 
 
 (* This section might be upstreamed to stdpp. *)
 (* TODO add bv_solve support for this section *)
 
-(* Give minimal number of block of size n to cover m
+(** Divide [m] by [n] and rounds up. The result is the number of block of size
+    [n] required to cover [m]
 
-   Unspecified if n = 0
- *)
-Definition align_up (m n : N) := ((m + (n - 1)) / n)%N.
+    Undefined if [n] is zero (in practice the result will also be 0) *)
+Definition div_round_up (m n : N) := ((m + (n - 1)) / n)%N.
 
 (** Transform a bitvector to bytes of size n. *)
 Definition bv_to_bytes (n : N) {m : N} (b : bv m) : list (bv n) :=
-  bv_to_little_endian (Z.of_N $ align_up m n) n (bv_unsigned b).
+  bv_to_little_endian (Z.of_N $ div_round_up m n) n (bv_unsigned b).
+
+Lemma length_bv_to_bytes (n m : N) (b : bv m) :
+  length (bv_to_bytes n b) = N.to_nat (div_round_up m n)%N.
+Proof. unfold bv_to_bytes. rewrite length_bv_to_little_endian by lia. lia. Qed.
 
 (** Transform a list of bytes of size n to a bitvector of size m.
 
     If m is larger than n*(length l), the result is zero-extended to m
     If m is smaller than n*(length l), the result is truncated to m *)
-Definition bv_of_bytes (n : N) (m : N) (l : list (bv n)) : bv m :=
+Definition bv_of_bytes {n : N} (m : N) (l : list (bv n)) : bv m :=
   little_endian_to_bv n l |> Z_to_bv m.
 
+Definition bv_get_byte (n i : N) {m} (b : bv m) : bv n :=
+  bv_extract (i * n) n b.
+
+Lemma bv_to_bytes_bv_get_byte (n i : N) {m} (b : bv m) (byte : bv n) :
+  (0 < n)%N →
+  (bv_to_bytes n b) !! i = Some byte ↔ (i * n < m)%N ∧ bv_get_byte n i b = byte.
+Proof.
+  intro N0.
+  unfold bv_get_byte.
+  unfold bv_to_bytes.
+  unfold div_round_up.
+  setoid_rewrite bv_to_little_endian_lookup_Some; [|lia].
+  split; intros [H H']; subst; (split; [nia | bv_solve]).
+Qed.
+
+Lemma bv_of_bytes_bv_to_bytes n `(b : bv m) :
+  n ≠ 0%N → bv_of_bytes m (bv_to_bytes n b) = b.
+Proof.
+  intro H.
+  unfold bv_of_bytes, bv_to_bytes.
+
+  (* Convert in a Z problem *)
+  apply bv_eq. bv_unfold. rewrite <- bv_wrap_bv_unsigned.
+  generalize (bv_unsigned b); clear b; intro b.
+
+  rewrite little_endian_to_bv_to_little_endian; [|lia].
+  rewrite <- N2Z.inj_mul.
+  fold (bv_modulus (div_round_up m n * n)).
+  fold (bv_wrap (div_round_up m n * n) (bv_wrap m b)).
+  rewrite bv_wrap_bv_wrap; [| unfold div_round_up; lia].
+  by rewrite bv_wrap_idemp.
+Qed.
 
 Definition bv_get_bit (i : N) {n : N} (b : bv n) : bool :=
   negb (bv_extract i 1 b =? bv_0 1).
@@ -589,3 +191,84 @@ Definition bv_set_bit (i : N) {n : N} (b : bv n) : bv n :=
 
 Definition bv_unset_bit (i : N) {n : N} (b : bv n) : bv n :=
   bv_or b (bv_not (Z_to_bv n (bv_modulus i))).
+
+Program Definition bv_1 (n : N) := Z_to_bv n 1.
+Program Definition bv_m1 (n : N) := Z_to_bv n (-1).
+
+Definition bv_eqb {n : N} (bv1 bv2 : bv n) : bool := bool_decide (bv1 = bv2).
+Definition bv_neqb {n : N} (bv1 bv2 : bv n) : bool := bool_decide (bv1 ≠ bv2).
+Definition bv_redand {n : N} (bv : bv n) : bool := bv_eqb bv (bv_m1 n).
+Definition bv_redor {n : N} (bv : bv n) : bool := bv_neqb bv (bv_0 n).
+
+
+Definition bv_nand {n : N} (bv1 bv2 : bv n) : bv n := bv_and bv1 bv2 |> bv_not.
+Definition bv_nor {n : N} (bv1 bv2 : bv n) : bv n := bv_or bv1 bv2 |> bv_not.
+Definition bv_xnor {n : N} (bv1 bv2 : bv n) : bv n := bv_xor bv1 bv2 |> bv_not.
+
+
+(** * Extra [bvn] functions *)
+
+Definition BVN (n : N) (val : Z) {wf: BvWf n val} : bvn := BV n val.
+
+Notation bvn_unsigned bv := (bv_unsigned (bvn_val bv)).
+Notation bvn_signed bv := (bv_signed (bvn_val bv)).
+Notation Z_to_bvn n z := (bv_to_bvn (Z_to_bv n z)).
+
+#[global] Instance bvn_empty : Empty bvn := BVN 0 0.
+
+Definition bvn_eqb (bv1 bv2 : bvn) : bool := bool_decide (bv1 = bv2).
+Definition bvn_neqb (bv1 bv2 : bvn) : bool := bool_decide (bv1 ≠ bv2).
+Definition bvn_redand (x : bvn) : bool := x |> bvn_val |> bv_redand.
+Definition bvn_redor (x : bvn) : bool := x |> bvn_val |> bv_redor.
+
+
+Definition bvn_succ (x : bvn) : bvn := x |> bvn_val |> bv_succ.
+Definition bvn_pred (x : bvn) : bvn := x |> bvn_val |> bv_pred.
+Definition bvn_not (x : bvn) : bvn := x |> bvn_val |> bv_not.
+Definition bvn_opp (x : bvn) : bvn := x |> bvn_val |> bv_opp.
+
+Lemma bvn_not_type (x : bvn) : bvn_n (bvn_not x) = bvn_n x.
+  Proof. naive_solver. Qed.
+
+Definition bvn_extract (s l : N) (x : bvn) : bvn :=
+  x |> bvn_val |> bv_extract s l.
+
+Definition bvn_zero_extend (l : N) (x : bvn) : bvn :=
+  x |> bvn_val |> bv_zero_extend l.
+
+Definition bvn_sign_extend (l : N) (x : bvn) : bvn :=
+  x |> bvn_val |> bv_sign_extend l.
+
+Definition bvn_binop (f : forall {n : N}, bv n -> bv n -> bv n) (x y : bvn)
+    : option bvn :=
+  match decide (bvn_n x = bvn_n y) with
+  | left eq => Some (f (ctrans eq (bvn_val x)) (bvn_val y) : bvn)
+  | right _ => None
+  end.
+
+
+
+Definition bvn_mul := bvn_binop (@bv_mul).
+Definition bvn_add := bvn_binop (@bv_add).
+Definition bvn_sub := bvn_binop (@bv_sub).
+Definition bvn_divu := bvn_binop (@bv_divu).
+Definition bvn_modu := bvn_binop (@bv_modu).
+Definition bvn_divs := bvn_binop (@bv_divs).
+Definition bvn_quots := bvn_binop (@bv_quots).
+Definition bvn_mods := bvn_binop (@bv_mods).
+Definition bvn_rems := bvn_binop (@bv_rems). (* Yay REMS! *)
+Definition bvn_shiftl := bvn_binop (@bv_shiftl).
+Definition bvn_shiftr := bvn_binop (@bv_shiftr).
+Definition bvn_ashiftr := bvn_binop (@bv_ashiftr).
+Definition bvn_and := bvn_binop (@bv_and).
+Definition bvn_or := bvn_binop (@bv_or).
+Definition bvn_xor := bvn_binop (@bv_xor).
+
+Definition bvn_concat (b1 b2 : bvn) : bvn :=
+  bv_concat (bvn_n b1 + bvn_n b2) (bvn_val b1) (bvn_val b2).
+
+#[global] Instance bvn_countable : Countable bvn.
+Proof.
+  refine (inj_countable (λ bv : bvn, (bvn_n bv, bvn_unsigned bv)) (λ '(n, val), Some (Z_to_bvn n val)) _).
+  intros [n bv]. cbn. by rewrite Z_to_bv_bv_unsigned.
+Defined.

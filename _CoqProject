@@ -1,0 +1,4 @@
+-Q _build/default/theories self
+
+-R _build/default/system-semantics/Common SSCCommon
+-R _build/default/system-semantics/ISASem ISASem

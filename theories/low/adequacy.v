@@ -1,38 +1,39 @@
-(*                                                                                  *)
-(*  BSD 2-Clause License                                                            *)
-(*                                                                                  *)
-(*  This applies to all files in this archive except folder                         *)
-(*  "system-semantics".                                                             *)
-(*                                                                                  *)
-(*  Copyright (c) 2023,                                                             *)
-(*     Zongyuan Liu                                                                 *)
-(*     Angus Hammond                                                                *)
-(*     Jean Pichon-Pharabod                                                         *)
-(*     Thibaut Pérami                                                               *)
-(*                                                                                  *)
-(*  All rights reserved.                                                            *)
-(*                                                                                  *)
-(*  Redistribution and use in source and binary forms, with or without              *)
-(*  modification, are permitted provided that the following conditions are met:     *)
-(*                                                                                  *)
-(*  1. Redistributions of source code must retain the above copyright notice, this  *)
-(*     list of conditions and the following disclaimer.                             *)
-(*                                                                                  *)
-(*  2. Redistributions in binary form must reproduce the above copyright notice,    *)
-(*     this list of conditions and the following disclaimer in the documentation    *)
-(*     and/or other materials provided with the distribution.                       *)
-(*                                                                                  *)
-(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"     *)
-(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE       *)
-(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE  *)
-(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE    *)
-(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL      *)
-(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR      *)
-(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER      *)
-(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,   *)
-(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE   *)
-(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
-(*                                                                                  *)
+(**************************************************************************************)
+(*  BSD 2-Clause License                                                              *)
+(*                                                                                    *)
+(*  This applies to all files in this archive except folder                           *)
+(*  "system-semantics".                                                               *)
+(*                                                                                    *)
+(*  Copyright (c) 2023,                                                               *)
+(*       Zongyuan Liu                                                                 *)
+(*       Angus Hammond                                                                *)
+(*       Jean Pichon-Pharabod                                                         *)
+(*       Thibaut Pérami                                                               *)
+(*                                                                                    *)
+(*  All rights reserved.                                                              *)
+(*                                                                                    *)
+(*  Redistribution and use in source and binary forms, with or without                *)
+(*  modification, are permitted provided that the following conditions are met:       *)
+(*                                                                                    *)
+(*  1. Redistributions of source code must retain the above copyright notice, this    *)
+(*     list of conditions and the following disclaimer.                               *)
+(*                                                                                    *)
+(*  2. Redistributions in binary form must reproduce the above copyright notice,      *)
+(*     this list of conditions and the following disclaimer in the documentation      *)
+(*     and/or other materials provided with the distribution.                         *)
+(*                                                                                    *)
+(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"       *)
+(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE         *)
+(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE    *)
+(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE      *)
+(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL        *)
+(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR        *)
+(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER        *)
+(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,     *)
+(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE     *)
+(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.              *)
+(*                                                                                    *)
+(**************************************************************************************)
 
 From iris.proofmode Require Import tactics.
 From iris.base_logic.lib Require Import wsat.
@@ -62,8 +63,10 @@ Section adequacy.
                             (local_interp gs (idx_to_tid idx) (LThreadState.get_progress σ) lσ) ∗
                             WP σ @ (idx_to_tid idx) {{ σ', (Φ σ') }})%I.
 
-  Notation tpsteps gs σs σs' := ("#Htpstep" ∷ [∗ list] idx ↦ σ;σ'∈σs;σs',
-                                   ∃ n, ⌜nsteps (LThreadStep.t gs (idx_to_tid idx)) (S n) σ σ'⌝)%I.
+  Notation tpsteps gs ns σs σs' :=
+   ("%Htpstep_num" ∷ ⌜length ns = length σs⌝ ∗
+    "#Htpstep" ∷ [∗ list] idx ↦ σ;σ'∈σs;σs',
+                                  ∃ n, ⌜ns !! idx = Some n ∧ nsteps (LThreadStep.t gs (idx_to_tid idx)) (S n) σ σ'⌝)%I.
 
   Notation tpstate_done σs := ([∗ list] σ ∈ σs, ⌜Terminated σ⌝)%I.
 
@@ -78,16 +81,44 @@ Section adequacy.
           foldl (λ s idx, filter (Graph.is_local_node_of (idx_to_tid idx)) (Candidate.valid_eid gr) ∪ s)
           ∅ (seq 0 (length σs)) = dom na_full⌝)%I.
 
+  Lemma lookup_last {A} (ns: list A) (n: A):
+    ns !! (length ns - 1)%nat = Some n ->
+    ∃ ns', ns = (ns' ++ [n])%list.
+  Proof.
+    intros Hlk.
+      exists (take ((length ns) - 1) ns).
+      rewrite -{1}(take_drop ((length ns) - 1) ns).
+      f_equal.
+      apply list_eq.
+      intros.
+
+      rewrite lookup_drop.
+      rewrite list_lookup_singleton.
+      destruct i.
+      {
+        subst.
+      assert ((length ns - 1 + 0) = length ns - 1)%nat as -> by lia.
+      done.
+      }
+      {
+        (* assert ((length ns - 1 + S i)%nat = (length ns + i)%nat) as -> by lia. *)
+        destruct (ns !! (length ns - 1 + S i)%nat ) eqn: Hlk';last done.
+        {
+          apply lookup_lt_Some in Hlk'.
+          lia.
+        }
+      }
+Qed.
 
   (*** Phase one - induction on [po] *)
   (* This is the induction version of [adequacy_po]
      We do induction on [po].
      We can obtain a local [node_annot'] and construct a local [edge_annot'],
      that are related by [ea_lob_wf] from initial ones *)
-  Lemma adequacy_po_aux gs σs σs' node_annot edge_annot Φs:
+  Lemma adequacy_po_aux gs ns σs σs' node_annot edge_annot Φs:
     AAConsistent.t gs.(GlobalState.gs_graph) ->
-    AACandExec.NMSWF.wf gs.(GlobalState.gs_graph) ->
-    "#Htpstep" ∷ tpsteps gs σs σs' -∗
+    AACand.NMSWF.wf gs.(GlobalState.gs_graph) ->
+    "#Htpstep" ∷ tpsteps gs  ns σs σs' -∗
     "#Htpinit" ∷ tpstate_init gs.(GlobalState.gs_graph) σs -∗
     "#Htpdone" ∷ tpstate_done σs' -∗
     "#Hgs" ∷ □ gconst_interp gs -∗
@@ -95,27 +126,29 @@ Section adequacy.
     (* none of the nodes has been checked *)
     "#Hna_dom" ∷ ([∗ list] idx ↦ _ ∈ σs, ⌜filter (Graph.is_local_node_of (idx_to_tid idx)) (dom node_annot) = ∅⌝) -∗
     "#Hea_wf" ∷ ea_local_wf (gs.(GlobalState.gs_graph)) edge_annot node_annot -∗
-    "Htpwp" ∷ tpwp gs σs Φs ==∗
-    ∃ (node_annot' : mea Σ) (edge_annot' : sra Σ),
+    "Htpwp" ∷ tpwp gs σs Φs  -∗
+    Nat.iter (foldr (λ n acc, (S n) + acc) 0 ns)%nat (λ P, |==> ▷ |==> P)
+    (∃ (node_annot' : mea Σ) (edge_annot' : sra Σ),
       annot_interp node_annot' ∗
       tpnode_annot_full (gs.(GlobalState.gs_graph)) σs node_annot node_annot' ∗
       ea_local_wf (gs.(GlobalState.gs_graph)) edge_annot' node_annot' ∗
-      tppost_lifting σs' Φs.
+      tppost_lifting σs' Φs).
   Proof.
     intros Hgr_cs Hgr_wf.
-    revert σs σs' Φs node_annot edge_annot.
+    revert ns σs' Φs node_annot edge_annot.
     induction σs as [|σs_pre σs Hσs_pre] using prefix_strict_ind;
-      intros σs' Φs node_annot edge_annot;simpl; repeat iNamed 1; iNamed "Htpstep".
+      intros ns σs' Φs node_annot edge_annot;simpl; repeat iNamed 1; iNamed "Htpstep".
     { (* empty case *)
       iDestruct (big_sepL2_nil_inv_l with "Htpstep") as %->.
       iDestruct (big_sepL2_nil_inv_l with "Htpwp") as %->.
-      iModIntro. iExists node_annot, edge_annot. iFrame.
-      iSplit. rewrite union_empty_r_L. clear;done. iSplit;[iPureIntro|]. split;assumption. clear;done.
+      rewrite length_zero_iff_nil in Htpstep_num. subst ns. simpl.
+      iExists node_annot, edge_annot. iFrame.
+      iSplit. rewrite union_empty_r_L. clear;done. iSplit;[iPureIntro|]. done. iPureIntro. assumption.
     }
     (* induction case *)
     destruct Hσs_pre as [σ ->].
 
-    iDestruct (big_sepL2_snoc_inv_l with "Htpstep") as (σ' σs_pre') "([-> [% %Hstep]] & Htpstep')".
+    iDestruct (big_sepL2_snoc_inv_l with "Htpstep") as (σ' σs_pre') "([-> [% [%Hlk_ns %Hstep]]] & Htpstep')".
     iDestruct (big_sepL2_length with "Htpstep'") as "%Hlen_eq".
     iDestruct (big_sepL_snoc with "Htpinit") as "(Htpinit' & [%pg [%Hpg %Hinit]])".
     iDestruct (big_sepL_snoc with "Htpdone") as "(Htpdone' & %Hterm)".
@@ -123,15 +156,43 @@ Section adequacy.
     iClear "Htpstep".
     iDestruct (big_sepL2_snoc_inv_l with "Htpwp") as (Φ Φs') "([-> (%&%&Hlocal_interp &Hwp)] & Htpwp)".
     rewrite Hpg /=.
+
+    (* prepare ns *)
+    assert (∃ ns', ns = ns' ++ [n])%list as [ns' ->].
+    {
+      apply (lookup_last ns n).
+      rewrite Htpstep_num.
+      rewrite length_app /=.
+      assert (length σs_pre + 1 - 1 = length σs_pre)%nat as -> by lia. done.
+    }
+    rewrite foldr_snoc.
+    assert (S (n + 0) = (S n) + 0)%nat as -> by lia.
+    rewrite foldr_comm_acc;last by lia.
+    rewrite Nat.iter_add.
+
     iDestruct (wp_steps with "Hlocal_interp Hgs Hwp") as "H";try assumption. eassumption.
     {
-      iMod ("H" $! node_annot edge_annot with "[$Hannot_interp Hea_fe]")
-        as "(%node_annot'&%edge_annot'&%lσ'&Hannot_interp&Hea_wf&Hlocal_interp'&%Hna_dom&Hpost)".
+      iDestruct ("H" $! node_annot edge_annot with "[$Hannot_interp Hea_fe]") as "H".
       iSplitR. iPureIntro. rewrite Hna_ept. symmetry. by apply LThreadStep.eids_from_init_empty.
       iSplit; [|iSplit]. iPureIntro;assumption.  iPureIntro;assumption. iFrame.
-      specialize (IHσs1 σs_pre' Φs').
-      iDestruct(IHσs1 with "Htpstep' Htpinit' Htpdone' Hgs Hannot_interp [] Hea_wf Htpwp")
-        as ">(%node_annot_full&%edge_annot_full&Hannot_interp&Hna_full&Hea_wf&Hposts)".
+      specialize (IHσs1 ns' σs_pre' Φs').
+      iApply (step_bupdN_mono with "[Htpwp] H").
+      iIntros "(%node_annot'&%edge_annot'&%lσ'&Hannot_interp&Hea_wf&Hlocal_interp'&%Hna_dom&Hpost)".
+      iDestruct(IHσs1 with "[Htpstep'] Htpinit' Htpdone' Hgs Hannot_interp [] Hea_wf Htpwp") as "IH".
+      {
+        rewrite !length_app /= in Htpstep_num.
+        iSplit.
+        { iPureIntro. lia. }
+        iApply (big_sepL2_mono with "Htpstep'").
+        iIntros. iPureIntro.
+        {
+          destruct H4 as (n' & ? & ? ).
+          exists n'. split;last done.
+          rewrite lookup_app_l // in H4.
+          apply lookup_lt_Some in H2.
+          lia.
+        }
+      }
       {
         iDestruct "Hna_dom'" as %Hna_dom'. iPureIntro.
         intros k ? Hlk;simpl.
@@ -143,7 +204,10 @@ Section adequacy.
         rewrite Hin in Htid_eq. apply lookup_lt_Some in Hlk.
         rewrite /idx_to_tid in Htid_eq. lia.
       }
-      iModIntro. iExists node_annot_full,edge_annot_full.
+      iApply (step_bupdN_mono with "[- IH] IH").
+      iIntros "(%node_annot_full&%edge_annot_full&Hannot_interp&Hna_full&Hea_wf&Hposts)".
+
+      iExists node_annot_full,edge_annot_full.
       iFrame "Hea_wf".
       rewrite big_sepL2_snoc. rewrite Hlen_eq. iFrame.
       rewrite -Hna_dom. iDestruct "Hna_full" as %Hna_full.
@@ -155,29 +219,31 @@ Section adequacy.
     }
   Qed.
 
-  Lemma adequacy_po gs σs σs' Φs:
+  Lemma adequacy_po gs ns σs σs' Φs:
     AAConsistent.t gs.(GlobalState.gs_graph) ->
-    AACandExec.NMSWF.wf gs.(GlobalState.gs_graph) ->
-    "#Htpstep" ∷ tpsteps gs σs σs' -∗
+    AACand.NMSWF.wf gs.(GlobalState.gs_graph) ->
+    "#Htpstep" ∷ tpsteps gs ns σs σs' -∗
     "#Htpinit" ∷ tpstate_init gs.(GlobalState.gs_graph) σs -∗
     "#Htpdone" ∷ tpstate_done σs' -∗
     "#Hgs" ∷ □ gconst_interp gs -∗
     "Hannot_interp" ∷ annot_interp ∅ -∗
     (* ensure that we checked events of all threads *)
     "%Hnum_thd" ∷ ⌜S (length σs) = Candidate.num_of_thd gs.(GlobalState.gs_graph)⌝ -∗
-    "Htpwp" ∷ tpwp gs σs Φs ==∗
-    ∃ (node_annot' : mea Σ) (edge_annot' : sra Σ),
+    "Htpwp" ∷ tpwp gs σs Φs -∗
+    Nat.iter (foldr (λ n acc, (S n) + acc) 0 ns)%nat (λ P, |==> ▷ |==> P)
+    (∃ (node_annot' : mea Σ) (edge_annot' : sra Σ),
       "Hannot_interp" ∷ annot_interp node_annot' ∗
       "%Hannot_full" ∷ na_full gs.(GlobalState.gs_graph) node_annot' ∗
       "Hea" ∷ ea_local_wf (gs.(GlobalState.gs_graph)) edge_annot' node_annot' ∗
-      "Hlifting" ∷ tppost_lifting σs' Φs.
+      "Hlifting" ∷ tppost_lifting σs' Φs).
   Proof.
     iIntros (??). repeat iNamed 1.
-    iDestruct (adequacy_po_aux _ _ _ _ ∅ ∅
-                with "Htpstep Htpinit Htpdone Hgs Hannot_interp [] [] Htpwp")
-      as ">(%node_annot & %edge_annot & Hannot_interp & %Hna_dom & Hea_wf & Hpost)" ;
+    iDestruct (adequacy_po_aux _ _ _ _ _ ∅ ∅
+                with "Htpstep Htpinit Htpdone Hgs Hannot_interp [] [] Htpwp") as "H";
       try eassumption; try (clear;done).
-    iModIntro. iExists node_annot, edge_annot.
+    iApply (step_bupdN_mono with "[] H").
+    iIntros "(%node_annot & %edge_annot & Hannot_interp & %Hna_dom & Hea_wf & Hpost)".
+    iExists node_annot, edge_annot.
     iFrame. iPureIntro. rewrite -Hna_dom. rewrite dom_empty_L union_empty_l_L.
     erewrite <-Candidate.non_initial_eids_fold;try eassumption. clear Hna_dom.
     induction (seq 0 (length σs)) as [|? ? Hpre] using prefix_strict_ind;first done.
@@ -674,29 +740,32 @@ Section adequacy.
   (** Full adequacy*)
 
   (* RSL/FSL version *)
-  Lemma adequacy_post_hold gs σs σs' Φs (σ: ob_st) :
+  Lemma adequacy_post_hold gs ns σs σs' Φs (σ: ob_st) :
     let gr := gs.(GlobalState.gs_graph) in
     AAConsistent.t gr ->
-    AACandExec.NMSWF.wf gr ->
-    "#Htpstep" ∷ tpsteps gs σs σs' -∗
+    AACand.NMSWF.wf gr ->
+    "#Htpstep" ∷ tpsteps gs ns σs σs' -∗
     "Htpinit" ∷ tpstate_init gr σs -∗
     "Htpdone" ∷ tpstate_done σs' -∗
     "Hgs" ∷ □ gconst_interp gs -∗
     "Hannot_interp" ∷ annot_interp ∅ -∗
     "#Hnum_thd" ∷ ⌜S (length σs) = Candidate.num_of_thd gr⌝ -∗
-    "Htpwp" ∷ tpwp gs σs Φs ==∗
-    ∃ (node_annot : mea Σ) (edge_annot : sra Σ),
+    "Htpwp" ∷ tpwp gs σs Φs -∗
+    Nat.iter (foldr (λ n acc, (S n) + acc) 0 ns)%nat (λ P, |==> ▷ |==> P)
+    (∃ (node_annot : mea Σ) (edge_annot : sra Σ),
       ea_local_wf gr edge_annot node_annot ∗
       ⌜dom node_annot = Candidate.non_initial_eids gr⌝ ∗
-      tppost_hold node_annot σs' Φs.
+      tppost_hold node_annot σs' Φs).
   Proof.
     iIntros (???). repeat iNamed 1.
-    iDestruct (adequacy_po with "Htpstep Htpinit Htpdone Hgs Hannot_interp Hnum_thd Htpwp")
-      as ">(% &%&H1)";[assumption|assumption|].
-    iNamed "H1".
-    rewrite big_sepL2_alt. iDestruct "Htpstep" as "[-> _]".
+    iDestruct (adequacy_po with "Htpstep Htpinit Htpdone Hgs Hannot_interp Hnum_thd Htpwp") as "H"
+     ;[assumption|assumption|].
+    iApply (step_bupdN_mono with "[] H").
+    iIntros "(% &%&H1)". iNamed "H1".
+    rewrite big_sepL2_alt.
+    iDestruct "Htpstep" as "[% [-> _]]".
     iDestruct (tppost_lifting_hold with "Hnum_thd Hannot_interp Hlifting") as "Hpost_hold";[assumption|].
-    iModIntro. iFrame "Hea". iFrame.
+    iFrame "Hea". iFrame.
     iPureIntro;assumption.
   Qed.
 
@@ -710,14 +779,40 @@ Section adequacy.
     iApply bupd_fupd. done.
   Qed.
 
+  Lemma bupd_step_bupdN_bupd : ∀ (n : nat) P,
+    (|==> (Nat.iter n (λ P, |==> ▷ (|==> P)) (|==> P))) ⊢ (Nat.iter n (λ P, |==> ▷ (|==> P)) (|==> P)).
+  Proof.
+    intros. induction n; simpl; iIntros ">H";done.
+  Qed.
+
+  Lemma step_bupdN_fupdN : ∀ (n : nat) P,
+    Nat.iter n (λ P, |==> ▷ (|==> P)) P ⊢ |={⊤}[∅]▷=>^n P.
+  Proof.
+    intros.
+    induction n.
+    { done. }
+    {
+      simpl.
+      iIntros "H".
+      iMod "H".
+      iApply fupd_mask_intro. done.
+      iIntros "Helim".
+      iNext.
+      iMod "H".
+      iMod "Helim" as "_".
+      iModIntro.
+      by iApply IHn.
+    }
+  Qed.
+
   (* Iris version (depends on FSL vesion) *)
-  Lemma adequacy_post gs σs σs' Φs:
+  Lemma adequacy_post gs ns σs σs' Φs:
     let gr := gs.(GlobalState.gs_graph) in
     AAConsistent.t gr ->
-    AACandExec.NMSWF.wf gr ->
+    AACand.NMSWF.wf gr ->
     S (length σs) = Candidate.num_of_thd gr ->
-    (length σs = length σs' ∧
-       ∀ idx σ σ', σs !! idx = Some σ → σs' !! idx = Some σ' → (∃ n, nsteps (LThreadStep.t gs (idx_to_tid idx)) (S n) σ σ')) ->
+    (length ns = length σs ∧ length σs = length σs' ∧
+       ∀ idx σ σ', σs !! idx = Some σ → σs' !! idx = Some σ' → (∃ n, ns !! idx = Some n ∧ nsteps (LThreadStep.t gs (idx_to_tid idx)) (S n) σ σ')) ->
     (∀ idx σ, σs !! idx = Some σ → (∃ pg, LThreadState.at_progress σ pg ∧
                                           ThreadState.progress_is_init gr (idx_to_tid idx) pg)) ->
     (∀ (k:nat) σ, σs' !! k = Some σ → Terminated σ) ->
@@ -727,21 +822,33 @@ Section adequacy.
              ∗ "Hob_st" ∷ ob_st_interp gr σ (Candidate.initials gr)
              ∗ "Hannot_interp" ∷ annot_interp ∅
              ∗ "Htpwp" ∷ tpwp gs σs Φs)
-        -∗ |={⊤}[∅]▷=>^ (size (Candidate.non_initial_eids gr)) |==> ▷ |==>
-         tppost σs' Φs ∗ ∃ (σ': ob_st), "Hob_st" ∷ ob_st_interp gr σ' (Candidate.valid_eid gr))%I.
+        -∗
+       Nat.iter (foldr (λ n acc : nat, (S n + acc)%nat) 0%nat ns) (λ P, |==> ▷ (|==> P))
+                (|={⊤}[∅]▷=>^ (size (Candidate.non_initial_eids gr)) |==> ▷ |==>
+                   tppost σs' Φs ∗ ∃ (σ': ob_st), "Hob_st" ∷ ob_st_interp gr σ' (Candidate.valid_eid gr)))%I.
   Proof.
     iIntros (??? Hnum_thd Htpstep Htpinit Htpdone). iIntros "[% H]".
-    iApply bupd_step_fupdN_bupd. iMod "H". iNamed "H".
-    iMod (adequacy_post_hold gs σs σs' Φs with "[] [] [] Hgs Hannot_interp [] Htpwp")
-      as "(%&%&Hea&%Hdom&Hpost_hold)" ;try assumption.
-    iApply (big_sepL2_impl (λ idx σ σ', ⌜∃ n, nsteps (LThreadStep.t gs (idx_to_tid idx)) (S n) σ σ'⌝%I)).
-    rewrite big_sepL2_pure. iPureIntro. assumption. iModIntro. iIntros (? ? ? ? ? [? ?]). iExists _. iPureIntro; eassumption.
-    iApply (big_sepL_impl (λ idx σ , ⌜∃ pg, LThreadState.at_progress σ pg ∧
-                                          ThreadState.progress_is_init gs.(GlobalState.gs_graph) (idx_to_tid idx) pg⌝%I)).
-    rewrite big_sepL_pure. iPureIntro;assumption. iModIntro. iIntros (? ? ? [? ?]). iExists _. iPureIntro;eassumption.
-    iPureIntro; assumption. iPureIntro; assumption.
+    iApply (step_bupdN_mono with "[] [H]").
+    { iApply bupd_step_fupdN_bupd. }
+    iApply bupd_step_bupdN_bupd.
+    iMod "H". iNamed "H".
+    iDestruct (adequacy_post_hold gs ns σs σs' Φs with "[] [] [] Hgs Hannot_interp [] Htpwp") as "H";try assumption.
+    {
+      iSplit. iPureIntro. naive_solver.
+      iApply (big_sepL2_impl (λ idx σ σ', ⌜∃ n, ns !! idx = Some n ∧ nsteps (LThreadStep.t gs (idx_to_tid idx)) (S n) σ σ'⌝%I)).
+      rewrite big_sepL2_pure. iPureIntro. naive_solver.
+      iModIntro. iIntros (? ? ? ? ? [? ?]).  iExists _. iPureIntro; eassumption.
+    }
+    {
+      iApply (big_sepL_impl (λ idx σ , ⌜∃ pg, LThreadState.at_progress σ pg ∧
+                                              ThreadState.progress_is_init gs.(GlobalState.gs_graph) (idx_to_tid idx) pg⌝%I)).
+      rewrite big_sepL_pure. iPureIntro;assumption. iModIntro. iIntros (? ? ? [? ?]). iExists _. iPureIntro;eassumption.
+    }
+    { iPureIntro; assumption. }
+    { iPureIntro; assumption. }
     iModIntro.
-    iNamed "Hea".
+    iApply (step_bupdN_mono with "[Hob_st] H").
+    iIntros "(%&%&Hea&%Hdom&Hpost_hold)". iNamed "Hea".
     iDestruct (adequacy_ob with "[$Hob_st] [Hea_fe]") as "Hna";try eassumption.
     rewrite -Hea_dom_eq in Hdom. exact Hdom.
     iSplit;first iPureIntro. eassumption. iFrame. iPureIntro;assumption.
@@ -750,13 +857,13 @@ Section adequacy.
   Qed.
 
   (* Iris version with pure post conditions *)
-  Lemma adequacy_post_pure gs σs σs' (Φps : list (_ -> Prop)) :
+  Lemma adequacy_post_pure gs ns σs σs' (Φps : list (_ -> Prop)) :
     let gr := gs.(GlobalState.gs_graph) in
     AAConsistent.t gr ->
-    AACandExec.NMSWF.wf gr ->
+    AACand.NMSWF.wf gr ->
     S (length σs) = Candidate.num_of_thd gr ->
-    (length σs = length σs' ∧
-       ∀ idx σ σ', σs !! idx = Some σ → σs' !! idx = Some σ' → (∃ n, nsteps (LThreadStep.t gs (idx_to_tid idx)) (S n) σ σ')) ->
+    (length ns = length σs ∧ length σs = length σs' ∧
+       ∀ idx σ σ', σs !! idx = Some σ → σs' !! idx = Some σ' → (∃ n, ns !! idx = Some n ∧ nsteps (LThreadStep.t gs (idx_to_tid idx)) (S n) σ σ')) ->
     (∀ idx σ, σs !! idx = Some σ → (∃ pg, LThreadState.at_progress σ pg ∧
                                           ThreadState.progress_is_init gr (idx_to_tid idx) pg)) ->
     (∀ (k:nat) σ, σs' !! k = Some σ → Terminated σ) ->
@@ -768,12 +875,18 @@ Section adequacy.
        ∗ "Htpwp" ∷ ([∗ list] idx ↦ σ;Φp ∈ σs;Φps,
                           ∃ `(_ : !irisGL) lσ, local_interp gs (idx_to_tid idx) (LThreadState.get_progress σ) lσ ∗
                             WP σ @ (idx_to_tid idx) {{ σ', ⌜Φp σ'⌝ }}))
-       -∗ |={⊤}[∅]▷=>^ (size (Candidate.non_initial_eids gr)) |==> ▷ |==>
+
+        -∗
+       Nat.iter (foldr (λ n acc : nat, (S n + acc)%nat) 0%nat ns) (λ P, |==> ▷ (|==> P))
+        (|={⊤}[∅]▷=>^ (size (Candidate.non_initial_eids gr)) |==> ▷ |==>
           ⌜length σs' = length Φps ∧ ∀ (idx: nat) σ' (Φ: _ -> Prop), σs' !! idx = Some σ' → Φps !! idx = Some Φ
-                                                                   → Φ σ'⌝).
+                                                                   → Φ σ'⌝)).
   Proof.
     iIntros (??? Hnum_thd Htpstep Htpinit Htpdone). iIntros "[% H]".
-    iApply bupd_step_fupdN_bupd. iMod "H". iNamed "H".
+    iApply (step_bupdN_mono with "[] [H]").
+    { iApply bupd_step_fupdN_bupd. }
+    iApply bupd_step_bupdN_bupd.
+    iMod "H". iNamed "H".
     iAssert (tpwp gs σs ((λ Φp, (λ v,  ⌜Φp v⌝)%I) <$> Φps))%I with "[Htpwp]" as "Htpwp".
     {
       iDestruct (big_sepL2_impl _ (λ idx σ Φp, ∃ `(_ : !irisGL) lσ,
@@ -790,6 +903,9 @@ Section adequacy.
     }
     iDestruct (adequacy_post with "[-]") as "H";try eassumption.
     iFrame. clear;done.
+    iModIntro.
+    iApply (step_bupdN_mono with "[] H").
+    iIntros "H". iModIntro.
     iApply (step_fupdN_mono with "[] H").
     iIntros ">H". iModIntro. iNext. iMod "H" as "[H _]". iModIntro.
     rewrite big_sepL2_fmap_r. rewrite big_sepL2_pure. iFrame.
@@ -798,20 +914,20 @@ Section adequacy.
 End adequacy.
 
 (* Final Coq level adequacy *)
-Lemma adequacy_pure `{CMRA Σ} `{!invGpreS Σ} gs σs σs' (Φps : list (_ -> Prop)) :
+Lemma adequacy_pure `{CMRA Σ} `{!invGpreS Σ} gs ns σs σs' (Φps : list (_ -> Prop)) :
   let gr := gs.(GlobalState.gs_graph) in
   AAConsistent.t gr ->
-  AACandExec.NMSWF.wf gr ->
-  S (length σs) = AACandExec.Candidate.num_of_thd gr ->
-  (length σs = length σs' ∧
-   ∀ idx σ σ', σs !! idx = Some σ → σs' !! idx = Some σ' → (∃ n, nsteps (LThreadStep.t gs (idx_to_tid idx)) (S n) σ σ')) ->
+  AACand.NMSWF.wf gr ->
+  S (length σs) = AACand.Candidate.num_of_thd gr ->
+  (length ns = length σs ∧ length σs = length σs' ∧
+       ∀ idx σ σ', σs !! idx = Some σ → σs' !! idx = Some σ' → (∃ n, ns !! idx = Some n ∧ nsteps (LThreadStep.t gs (idx_to_tid idx)) (S n) σ σ')) ->
   (∀ idx σ, σs !! idx = Some σ → (∃ pg, LThreadState.at_progress σ pg ∧
                                         ThreadState.progress_is_init gr (idx_to_tid idx) pg)) ->
   (∀ (k:nat) σ, σs' !! k = Some σ → Terminated σ) ->
   (forall `{Hinv : !invGS_gen HasNoLc Σ},
       ⊢@{iProp Σ} |==> ∃ `(!irisG) (σ: ob_st),
        ("Hgs" ∷ □ gconst_interp gs
-       ∗ "Hob_st" ∷ ob_st_interp gr σ (AACandExec.Candidate.initials gr)
+       ∗ "Hob_st" ∷ ob_st_interp gr σ (AACand.Candidate.initials gr)
        ∗ "Hannot_interp" ∷ annot_interp ∅
        ∗ "Htpwp" ∷ ([∗ list] idx ↦ σ;Φp ∈ σs;Φps, ∃ `(_ : !irisGL) lσ, local_interp gs (idx_to_tid idx) (LThreadState.get_progress σ) lσ
                                                                        ∗ WP σ @ (idx_to_tid idx) {{ σ', ⌜Φp σ'⌝ }}))) ->
@@ -819,19 +935,29 @@ Lemma adequacy_pure `{CMRA Σ} `{!invGpreS Σ} gs σs σs' (Φps : list (_ -> Pr
 Proof.
   intros ??????? HH.
   eapply pure_soundness.
+
   eapply (step_fupdN_soundness_no_lc' _
-            (size (AACandExec.Candidate.non_initial_eids gs.(GlobalState.gs_graph)) + 1)
-            (size (AACandExec.Candidate.non_initial_eids gs.(GlobalState.gs_graph)) + 1)).
+            ((1 + (foldr (λ n acc : nat, (S n + acc)%nat) 0%nat ns) + size (AACand.Candidate.non_initial_eids gs.(GlobalState.gs_graph))))
+         0).
   intros. specialize (HH Hinv).
 
   iIntros "_".
-  rewrite comm. rewrite (step_fupdN_add 1) /=. iMod HH as "(%Hiris & %prot & H)".
+  (* rewrite comm. *)
+  rewrite (step_fupdN_add 1). iMod HH as "(%Hiris & %prot & H)".
 
-  iDestruct (@adequacy_post_pure Σ H Hinv Hiris gs σs σs' Φps with "[$H]") as "H";try assumption.
+  iDestruct (@adequacy_post_pure Σ H Hinv Hiris gs ns σs σs' Φps with "[$H]") as "H";try assumption.
   clear;done.
 
+
   assert (Hfold:∀ P, (|={⊤}[∅]▷=>^1 P) ⊢@{iProp Σ} |={⊤}[∅]▷=> P) by done. iApply Hfold.
-  rewrite -step_fupdN_add. rewrite Nat.add_comm /=. rewrite step_fupdN_add.
+  rewrite -step_fupdN_add. rewrite Nat.add_comm.
+  rewrite -Nat.add_assoc.
+  rewrite step_fupdN_add.
+  iApply step_bupdN_fupdN.
+  iApply (step_bupdN_mono with "[] H").
+  iIntros "H".
+
+  rewrite step_fupdN_add /=.
   iApply (step_fupdN_mono with "[] H").
 
   iIntros "H'". iMod "H'".

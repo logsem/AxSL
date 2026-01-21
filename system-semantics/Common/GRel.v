@@ -1,42 +1,3 @@
-(*                                                                               *)
-(*  BSD 2-clause License                                                         *)
-(*                                                                               *)
-(*  This applies to all files in this archive except folder                      *)
-(*  "armv9-instantiation-types" or where specified otherwise.                    *)
-(*                                                                               *)
-(*  Copyright (c) 2022                                                           *)
-(*    Thibaut Pérami                                                             *)
-(*    Jean Pichon-Pharabod                                                       *)
-(*    Brian Campbell                                                             *)
-(*    Alasdair Armstrong                                                         *)
-(*    Ben Simner                                                                 *)
-(*    Peter Sewell                                                               *)
-(*                                                                               *)
-(*  All rights reserved.                                                         *)
-(*                                                                               *)
-(*  Redistribution and use in source and binary forms, with or without           *)
-(*  modification, are permitted provided that the following conditions           *)
-(*  are met:                                                                     *)
-(*                                                                               *)
-(*    * Redistributions of source code must retain the above copyright           *)
-(*      notice, this list of conditions and the following disclaimer.            *)
-(*    * Redistributions in binary form must reproduce the above copyright        *)
-(*      notice, this list of conditions and the following disclaimer in the      *)
-(*      documentation and/or other materials provided with the distribution.     *)
-(*                                                                               *)
-(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS          *)
-(*  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT            *)
-(*  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A      *)
-(*  PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER    *)
-(*  OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,     *)
-(*  EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,          *)
-(*  PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;  *)
-(*  OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,     *)
-(*  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR      *)
-(*  OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF       *)
-(*  ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.                                   *)
-(*                                                                               *)
-
 (** This file define a relation using a gset from stdpp that is entirely
     computable and whose standard relational operators are also computable. The
     type is [grel A]
@@ -57,7 +18,8 @@
 
 Require Import Wellfounded.
 
-From stdpp Require Export option.
+Require Import Options.
+From stdpp Require Export option fin_maps.
 Require Import Common.
 
 (* For some reason some typeclass instance defined in CSets is missing even if
@@ -66,15 +28,7 @@ Require Import CSets.
 
 Import SetUnfoldPair.
 
-
-(* Obviously not complete but useful *)
-Lemma iff_forall_swap A P Q :
-  (forall a : A, P a <-> Q a) -> (forall a, P a) <-> (forall a, Q a).
-Proof. sfirstorder. Qed.
-#[global] Hint Resolve iff_forall_swap : core.
-
-
-(*** Maps of sets utilities ***)
+(** * Maps of sets utilities ***)
 
 (** Union of set options, that merge two options, using the union in case of two
 Some. Useful for map of set merging *)
@@ -93,6 +47,10 @@ Notation "(∪ₒ)" := option_union (only parsing) : stdpp_scope.
 Notation "( x ∪ₒ.)" := (option_union x) (only parsing) : stdpp_scope.
 Notation "(.∪ₒ x )" := (λ y, option_union y x) (only parsing) : stdpp_scope.
 
+Lemma option_union_None `{Union A} (ov1 ov2 : option A) :
+  ov1 ∪ₒ ov2 = None ↔ ov1 = None ∧ ov2 = None.
+Proof. destruct ov1; destruct ov2; sfirstorder. Qed.
+
 
 (** Define a pointwise union of map of sets. If both maps contains a set for a given key, then the
     result contains the unions of the sets for that key. *)
@@ -108,7 +66,7 @@ Global Instance lookup_unfold_pointwise_union `{FinMap K M} `{Union A}
    (k : K) (m1 m2 : M A) (o1 o2 : option A) :
   LookupUnfold k m1 o1 -> LookupUnfold k m2 o2 ->
   LookupUnfold k (m1 ∪ₘ m2) (o1 ∪ₒ o2).
-Proof. tcclean. rewrite lookup_unfold. reflexivity. Qed.
+Proof. tcclean. unfold pointwise_union. by rewrite lookup_unfold. Qed.
 
 Global Instance lookup_total_unfold_pointwise_union `{FinMap K M} `{SemiSet A C}
   {lei : LeibnizEquiv C} (k : K) (m1 m2 : M C) (s1 s2 : C) :
@@ -142,7 +100,7 @@ Import SetUnfoldLookupTotal.
 
 
 
-(*** Grels ***)
+(** * Grels ***)
 
 Section GRel.
   Context {A : Type}.
@@ -150,10 +108,12 @@ Section GRel.
   Context {countA : Countable A}.
 
   Definition grel := gset (A * A).
+  #[global] Typeclasses Transparent grel.
 
   Definition grel_to_relation (r : grel) : relation A := fun x y => (x, y) ∈ r.
 
   Definition grel_map := gmap A (gset A).
+  #[global] Typeclasses Transparent grel_map.
 
   Definition grel_to_map (r : grel) : grel_map :=
     set_fold (fun '(e1, e2) res => res ∪ₘ {[e1 := {[e2]}]}) ∅ r.
@@ -167,8 +127,6 @@ Section GRel.
   Local Ltac auto_setoid_rewrite :=
     repeat (match goal with | H : _ = _ |- _ => setoid_rewrite H end).
 
-
-  (* Set Printing All. *)
 
   Lemma grel_map_eq_wf (rm rm' : grel_map):
     grel_map_wf rm -> grel_map_wf rm' -> (forall a : A, rm !!! a = rm' !!! a) -> rm = rm'.
@@ -187,7 +145,7 @@ Section GRel.
     e2 ∈ (grel_to_map r !!! e1) <-> (e1, e2) ∈ r.
   Proof using.
     unfold grel_to_map.
-    cinduction r using set_fold_cind_L.
+    funelim (set_fold _ _ _).
     - set_solver.
     - destruct x as [e3 e4].
       set_unfold.
@@ -205,7 +163,7 @@ Section GRel.
     unfold grel_map_wf.
     intro a.
     unfold grel_to_map.
-    cinduction r using set_fold_cind_L.
+    funelim (set_fold _ _ _).
     - rewrite lookup_unfold. congruence.
     - destruct x as [e3 e4].
       rewrite lookup_unfold.
@@ -231,7 +189,7 @@ Section GRel.
     (e1, e2) ∈ gmap_to_rel rm <-> e2 ∈ (rm !!! e1).
   Proof using.
     unfold gmap_to_rel.
-    cinduction rm using map_fold_cind.
+    funelim (map_fold _ _ _).
     - rewrite lookup_total_unfold.
       set_solver.
     - assert (m !!! i = ∅). {rewrite lookup_total_lookup. hauto lq:on. }
@@ -278,7 +236,8 @@ Section GRel.
   Qed.
   Hint Rewrite gmap_to_rel_to_map using auto with grel : grel.
 
-  (*** Sequence ***)
+
+  (** ** Domain and range ***)
 
   Definition grel_dom (r : grel) : gset A := set_map fst r.
   Definition grel_rng (r : grel) : gset A := set_map snd r.
@@ -286,66 +245,60 @@ Section GRel.
   Global Instance set_unfold_elem_of_grel_dom (r : grel) (x : A) P:
     (forall y, SetUnfoldElemOf (x, y) r (P y)) ->
     SetUnfoldElemOf x (grel_dom r) (exists z, P z).
-  Proof using. tcclean. set_unfold. hauto db:core. Qed.
+  Proof using. tcclean. unfold grel_dom. set_unfold. hauto db:pair. Qed.
 
   Global Instance set_unfold_elem_of_grel_rng (r : grel) (x : A) P:
     (forall y, SetUnfoldElemOf (y, x) r (P y)) ->
     SetUnfoldElemOf x (grel_rng r) (exists z, P z).
-  Proof using. tcclean. set_unfold. hauto db:core. Qed.
-
-  Lemma grel_dom_union r r':
-    grel_dom (r ∪ r') = grel_dom r ∪ grel_dom r'.
-  Proof. set_unfold. hauto. Qed.
-  Hint Rewrite grel_dom_union : grel.
-
-  Lemma grel_rng_union r r':
-    grel_rng (r ∪ r') = grel_rng r ∪ grel_rng r'.
-  Proof. set_unfold. hauto. Qed.
-  Hint Rewrite grel_rng_union : grel.
-
+  Proof using. tcclean. unfold grel_rng. set_unfold. hauto db:pair. Qed.
 
   Typeclasses Opaque grel_dom.
   Typeclasses Opaque grel_rng.
 
-  (*** Sequence ***)
+
+  (** ** Sequence ***)
 
   Definition grel_seq (r r' : grel) : grel :=
     let rm := grel_to_map r' in
     set_fold (fun '(e1, e2) res => res ∪ set_map (e1,.) (rm !!! e2)) ∅ r.
-  Infix "⨾" := grel_seq (at level 44, left associativity) : stdpp_scope.
+  Infix "⨾" := grel_seq (at level 39, left associativity) : stdpp_scope.
 
   Lemma grel_seq_spec r r' e1 e2 :
     (e1, e2) ∈ (r ⨾ r') <-> exists e3, (e1, e3) ∈ r /\ (e3, e2) ∈ r'.
   Proof using.
     unfold grel_seq.
-    cinduction r using set_fold_cind_L.
+    funelim (set_fold _ _ _).
     - set_solver.
-    - destruct x.
+    - case_split.
       set_unfold.
       hauto q:on.
   Qed.
 
   Global Instance set_unfold_elem_of_grel_seq r r' x P Q:
-    (forall z, SetUnfoldElemOf (x.1, z) r (P z)) ->
-    (forall z, SetUnfoldElemOf (z, x.2) r' (Q z)) ->
-    SetUnfoldElemOf x (r ⨾ r') (exists z, P z /\ Q z).
+    (forall z, SetUnfoldElemOf (x.1, z) r (P z)) →
+    (forall z, SetUnfoldElemOf (z, x.2) r' (Q z)) →
+    SetUnfoldElemOf x (r ⨾ r') (∃ z, P z ∧ Q z) | 20.
   Proof using. tcclean. apply grel_seq_spec. Qed.
 
-  Lemma grel_seq_dom r r' :
-     grel_dom (r ⨾ r') ⊆ grel_dom r.
-  Proof. set_unfold. hauto. Qed.
+  Typeclasses Opaque grel_seq.
 
-  Lemma grel_seq_rng r r' :
-      grel_rng (r ⨾ r') ⊆ grel_rng r'.
-  Proof. set_unfold. hauto. Qed.
+  Lemma grel_seq_union_r (r1 r2 r2' : grel):
+    r1 ⨾ (r2 ∪ r2') = (r1 ⨾ r2) ∪ (r1 ⨾ r2').
+  Proof. set_solver. Qed.
+  Lemma grel_seq_union_l (r1 r1' r2 : grel):
+    (r1 ∪ r1') ⨾ r2 = (r1 ⨾ r2) ∪ (r1' ⨾ r2).
+  Proof. set_solver. Qed.
 
-  (*** Inversion ***)
+  Global Instance grel_seq_assoc : Assoc (=) grel_seq.
+  Proof. unfold Assoc. set_solver. Qed.
+
+  (** ** Inversion ***)
 
   Definition grel_inv : grel -> grel := set_map (fun x => (x.2, x.1)).
   Notation "r ⁻¹" := (grel_inv r) (at level 1) : stdpp_scope.
 
   Lemma grel_inv_spec r e1 e2 : (e1, e2) ∈ r⁻¹ <-> (e2, e1) ∈ r.
-  Proof using. unfold grel_inv. set_unfold. hauto db:core. Qed.
+  Proof using. unfold grel_inv. set_unfold. hauto db:pair. Qed.
 
   Global Instance set_unfold_elem_of_grel_inv r x P:
     SetUnfoldElemOf (x.2, x.1) r P -> SetUnfoldElemOf x r⁻¹ P.
@@ -355,20 +308,10 @@ Section GRel.
   Proof using. set_solver. Qed.
   Hint Rewrite grel_inv_inv : grel.
 
-  Lemma grel_inv_dom r :
-     grel_dom (r⁻¹) = grel_rng r.
-  Proof. set_unfold. hauto. Qed.
-  Hint Rewrite grel_inv_dom : grel.
-
-  Lemma grel_inv_rng r :
-     grel_rng (r⁻¹) = grel_dom r.
-  Proof. set_unfold. hauto. Qed.
-  Hint Rewrite grel_inv_rng : grel.
-
   Typeclasses Opaque grel_inv.
 
 
-  (*** Set into rel ***)
+  (** ** Set into rel ***)
 
   Definition grel_from_set (s : gset A) : grel := set_map (fun x => (x, x)) s.
 
@@ -378,14 +321,26 @@ Section GRel.
   Proof using. unfold grel_from_set. set_solver. Qed.
 
   Global Instance set_unfold_elem_of_grel_from_set s x P:
-    SetUnfoldElemOf x.1 s P ->
-    SetUnfoldElemOf x ⦗s⦘ (P /\ x.1 = x.2).
+    SetUnfoldElemOf x.1 s P →
+    SetUnfoldElemOf x ⦗s⦘ (P ∧ x.1 = x.2) | 20.
   Proof using. tcclean. apply grel_from_set_spec. Qed.
 
   Typeclasses Opaque grel_from_set.
 
+  Global Instance set_unfold_elem_of_grel_from_set_seq s r x P Q:
+    SetUnfoldElemOf x.1 s P →
+    SetUnfoldElemOf x r Q →
+    SetUnfoldElemOf x (⦗s⦘⨾r) (P ∧ Q) | 10.
+  Proof using. tcclean. destruct x. set_solver. Qed.
 
-  (*** Transitive closure ***)
+  Global Instance set_unfold_elem_of_grel_seq_from_set r s x P Q:
+    SetUnfoldElemOf x r P →
+    SetUnfoldElemOf x.2 s Q →
+    SetUnfoldElemOf x (r⨾⦗s⦘) (P ∧ Q) | 10.
+  Proof using. tcclean. destruct x. set_solver. Qed.
+
+
+  (** ** Transitive closure ***)
 
   (** Decides if there exists a path between x and y in r that goes only through
       points in l. x and y themselves don't need to be in l *)
@@ -411,10 +366,28 @@ Section GRel.
     induction path; sauto lq:on rew:off.
   Qed.
 
+  Lemma is_path_start_dom r x y path :
+    is_path r x y path → x ∈ grel_dom r.
+  Proof. destruct path; set_solver. Qed.
+
+  Lemma is_path_path_dom r x y path :
+    is_path r x y path → ∀ x ∈ path, x ∈ grel_dom r.
+  Proof.
+    generalize dependent x. induction path; set_solver ##is_path_start_dom.
+  Qed.
+
+  Lemma is_path_rng r x y path :
+    is_path r x y path → ∀ x ∈ path, x ∈ grel_rng r.
+  Proof. generalize dependent x. induction path; set_solver. Qed.
+
+  Lemma is_path_end_rng r x y path :
+    is_path r x y path → y ∈ grel_rng r.
+  Proof. generalize dependent x. induction path; set_solver. Qed.
+
   (** Equivalent definition of exists_path using is_path, and in Prop *)
   Definition exists_path' (r : grel) (l : list A) (x y : A) :=
     exists path : list A,
-      is_path r x y path /\ NoDup path /\ ∀' p ∈ path, p ∈ l.
+      is_path r x y path /\ NoDup path /\ ∀ p ∈ path, p ∈ l.
 
   (* If a list contains an element it can be splitted on that element *)
   Lemma list_split (l : list A) x :
@@ -466,11 +439,11 @@ Section GRel.
     destruct (decide (a ∈ path)).
     - apply list_split in e as (left & right & ->).
       rewrite is_path_split in IP.
-      opose proof (H (a :: right) _) as H'. {rewrite app_length. cbn. lia. }
-      destruct (H' x) as [npath H'']. naive_solver.
+      opose proof (H (a :: right) _) as H'. {rewrite length_app. cbn. lia. }
+      destruct (H' x) as [npath H'']. { naive_solver. }
       exists npath. set_solver.
     - opose proof (H path _) as H'; [lia |].
-      destruct (H' a) as [npath H'']; [set_solver .. |].
+      destruct (H' a) as [npath H'']. { naive_solver. }
       exists (a :: npath).
       rewrite NoDup_cons.
       set_solver.
@@ -534,7 +507,7 @@ Section GRel.
     induction l; cbn; setoid_rewrite bool_unfold; set_unfold; naive_solver.
   Qed.
 
-  (* Implementation of computation transitive closure using Floyd-Warshall
+  (* Implementation of computational transitive closure using Floyd-Warshall
      algorithm *)
   Definition grel_plus (r : grel) :=
     let lA := elements (grel_dom r ∪ grel_rng r) in
@@ -553,27 +526,6 @@ Section GRel.
   Notation "a ⁺" := (grel_plus a) (at level 1, format "a ⁺") : stdpp_scope.
 
 
-  (* Proofs along fold_left using an invariant *)
-  Lemma fold_left_inv {C B} (I : C -> list B -> Prop) (f : C -> B -> C)  (l : list B) (i : C) :
-    (I i l) -> (forall a : C, forall x : B, forall t : list B, I a (x :: t) -> I (f a x) t)
-    -> I (fold_left f l i) [].
-    generalize dependent i.
-    induction l; sfirstorder.
-  Qed.
-  Lemma fold_left_inv_ND {C B} (I : C -> list B -> Prop) (f : C -> B -> C)
-    (l : list B) (i : C) :
-    NoDup l -> (I i l) ->
-    (forall a : C, forall x : B, forall t : list B, x ∉ t -> I a (x :: t) -> I (f a x) t)
-    -> I (fold_left f l i) [].
-    generalize dependent i.
-    induction l; sauto lq:on.
-  Qed.
-
-  (* Tactic Notation "feed" "rewrite" constr(H) := *)
-  (*   feed_core H using (fun p => let H':=fresh in pose proof p as H'; rewrite H'). *)
-  (* Tactic Notation "efeed" "rewrite" constr(H) := *)
-  (*   efeed_core H using (fun p => let H':=fresh in pose proof p as H'; rewrite H'). *)
-
   Lemma grel_plus_spec' x y r :
     (x, y) ∈ r⁺ <-> exists_path r (elements (grel_dom r ∪ grel_rng r)) x y.
   Proof using.
@@ -585,11 +537,11 @@ Section GRel.
     induction l. { cbn. setoid_rewrite bool_unfold. reflexivity. }
     intros x y.
     cbn - [exists_path].
-    opose proof* (fold_left_inv_ND
+    orewrite* (fold_left_inv_ND
                      (fun (c : grel) (t : list A) =>
                         forall i j, (i,j) ∈ c <->
                                  exists_path r (a :: l) i j /\
-                                   (i ∈ t -> exists_path r l i j))) as ->.
+                                   (i ∈ t -> exists_path r l i j))).
     - apply NoDup_elements.
     - clear x y. intros x y.
       rewrite IHl. clear IHl.
@@ -601,14 +553,14 @@ Section GRel.
         set_unfold.
         hauto lq:on.
     - clear x y IHl.
-      intros ri i ti Hti Hri x y.
+      intros ri i ti _ Hti Hri x y.
       cbn - [exists_path].
-      opose proof* (fold_left_inv_ND
+      orewrite* (fold_left_inv_ND
                        (fun (c : grel) (tj : list A) =>
                           forall i' j, (i',j) ∈ c <->
                                     exists_path r (a :: l) i' j /\
                                       (i' ∈ ti -> exists_path r l i' j) /\
-                                      (i' = i -> j ∈ tj -> exists_path r l i j))) as ->.
+                                      (i' = i -> j ∈ tj -> exists_path r l i j))).
       + apply NoDup_elements.
       + clear x y. intros x y.
         rewrite Hri. clear ri Hri.
@@ -619,7 +571,7 @@ Section GRel.
           pose proof exists_path_dom_rng_r.
           set_solver.
       + clear x y Hri ri.
-        intros rj j tj Htj Hrj x y.
+        intros rj j tj _ Htj Hrj x y.
         cbn in *.
         setoid_rewrite bool_unfold.
         setoid_rewrite bool_unfold in Hrj.
@@ -648,12 +600,25 @@ Section GRel.
       eapply is_path_tc.
       eassumption.
     - induction 1.
-      + exists []. set_unfold. sauto lq:on.
+      + exists []. cbn.  set_solver ## @NoDup_nil_2.
       + destruct IHtc as [path ?].
         destruct (is_path_NoDup r x z (y :: path)) as [npath ?].
         * set_solver.
-        * exists npath. set_unfold. qauto.
+        * exists npath. set_unfold. intuition. naive_solver.
   Qed.
+
+  Lemma grel_plus_path_spec (r : grel) x y :
+    (x, y) ∈ r⁺ ↔ ∃ path, is_path r x y path.
+  Proof using.
+    rewrite grel_plus_spec'.
+    rewrite exists_path_spec.
+    unfold exists_path'.
+    split.
+    - naive_solver.
+    - intros [path [npath (?&?&?)]%is_path_NoDup].
+      set_solver ##is_path_path_dom.
+  Qed.
+
 
 
   Typeclasses Opaque grel_plus.
@@ -760,134 +725,109 @@ Section GRel.
   Qed.
   Hint Rewrite grel_rng_plus: grel.
 
+  Lemma grel_plus_subseteq (r r' : grel) : r ⊆ r' → r⁺ ⊆ r'⁺.
+  Proof.
+    set_unfold.
+    intros ??? H.
+    cinduction H; set_solver ##grel_plus_trans ##grel_plus_once.
+  Qed.
+
 
   (*** Symmetric ***)
 
-  Definition grel_symmetric (r : grel) : bool := r =? r⁻¹.
+  Definition grel_symmetric (r : grel) : Prop := r⁻¹ = r.
 
-  Definition grel_symmetric_rew (r : grel) :
-    grel_symmetric r -> r⁻¹ = r.
-  Proof using. unfold grel_symmetric. hauto b:on. Qed.
+  #[export] Instance grel_symmetric_decision r : Decision (grel_symmetric r).
+  Proof. unfold_decide. Defined.
+
+  #[export] Instance grel_symmetric_unfold r P:
+    (∀ x y, SetUnfoldElemOf (x, y) r (P x y)) →
+    SetUnfold (grel_symmetric r) (∀ x y, P x y ↔ P y x).
+  Proof. tcclean. unfold grel_symmetric. set_solver. Qed.
 
   Definition grel_symmetric_spec (r : grel) :
-    grel_symmetric r -> forall x y, (x, y) ∈ r -> (y, x) ∈ r.
-  Proof using.
-    unfold grel_symmetric.
-    rewrite bool_unfold.
-    set_solver.
-  Qed.
+    grel_symmetric r ↔ ∀ x y, (x, y) ∈ r → (y, x) ∈ r.
+  Proof. set_solver. Qed.
 
   (*** Irreflexive ***)
 
-  Definition grel_irreflexive (r : grel) : bool :=
-    forallb (fun x : A * A => negb (x.1 =? x.2)) (elements r).
+  Definition grel_irreflexive (r : grel) := ∀ x, (x, x) ∉ r.
 
   Lemma grel_irreflexive_spec (r : grel) :
-    grel_irreflexive r <-> ∀''(x, y) ∈ r, x ≠ y.
-  Proof using.
-    unfold grel_irreflexive.
-    rewrite bool_unfold.
-    set_unfold.
-    hauto db:core.
-  Qed.
+    grel_irreflexive r ↔ ∀'(x, y) ∈ r, x ≠ y.
+  Proof using. unfold grel_irreflexive. hauto q:on db:pair. Qed.
 
-  Lemma grel_irreflexive_spec' (r : grel) :
-    grel_irreflexive r <-> ∀ x : A, (x, x) ∉ r.
-  Proof using.
-    rewrite grel_irreflexive_spec.
-    hauto db:core.
-  Qed.
+  Global Instance grel_irreflexive_decision r : Decision (grel_irreflexive r).
+  Proof using. rewrite grel_irreflexive_spec. solve_decision. Defined.
 
   Global Instance set_unfold_grel_irreflexive (r : grel) P :
-    (forall x y, SetUnfoldElemOf (x, y) r (P x y)) ->
-    SetUnfold (grel_irreflexive r) (forall x y, P x y -> x ≠ y).
-  Proof using. tcclean. hauto use:grel_irreflexive_spec db:core. Qed.
+    (∀ x y, SetUnfoldElemOf (x, y) r (P x y)) →
+    SetUnfold (grel_irreflexive r) (∀ x, ¬ P x x).
+  Proof using. tcclean. naive_solver. Qed.
 
   Definition grel_acyclic (r : grel) := grel_irreflexive (r⁺).
 
-
   (*** Transitive ***)
 
-  Definition grel_transitive (r : grel) : bool := r =? r⁺.
+  Definition grel_transitive (r : grel) := r⁺ = r.
 
   Lemma grel_transitive_spec (r : grel) :
-    grel_transitive r <-> forall x y z, (x, y) ∈ r -> (y, z) ∈ r -> (x, z) ∈ r.
+    grel_transitive r ↔ ∀ x y z, (x, y) ∈ r → (y, z) ∈ r → (x, z) ∈ r.
   Proof using.
     unfold grel_transitive.
-    rewrite bool_unfold.
     split; intro H.
-    - rewrite H. hauto lq:on db:grel.
+    - rewrite <- H. hauto lq:on db:grel.
     - set_unfold.
       intros x y.
       split; intro Hr.
-      + hauto db:grel.
       + cinduction Hr; hauto db:grel.
+      + hauto db:grel.
   Qed.
 
+  Global Instance grel_transitive_decision r : Decision (grel_transitive r).
+  Proof using. unfold grel_transitive. solve_decision. Qed.
+
   Lemma grel_transitive_rew (r : grel) :
-    grel_transitive r -> r⁺ = r.
-  Proof using. hauto qb:on unfold:grel_transitive. Qed.
+    grel_transitive r → r⁺ = r.
+  Proof using. naive_solver. Qed.
   Hint Rewrite grel_transitive_rew using done : grel.
 
   Lemma grel_transitive_relation_spec (r : grel) :
-    grel_transitive r <-> transitive A (grel_to_relation r).
-  Proof using.
-    unfold transitive.
-    unfold grel_to_relation.
-    apply grel_transitive_spec.
-  Qed.
+    grel_transitive r ↔ transitive A (grel_to_relation r).
+  Proof using. apply grel_transitive_spec. Qed.
 
   Lemma grel_transitive_plus (r : grel) : grel_transitive (r⁺).
-  Proof using.
-    apply <- grel_transitive_spec.
-    hauto db:grel.
-  Qed.
+  Proof using. apply <- grel_transitive_spec. hauto db:grel. Qed.
   Hint Resolve grel_transitive_plus : grel.
 
   (*** Functional ***)
 
-  Definition grel_map_functional (rm : grel_map) : bool :=
-    map_fold (fun k s b => b && bool_decide (set_size s <= 1)) true rm.
-
-  Lemma grel_map_functional_basic_spec (rm : grel_map) :
-    grel_map_functional rm <-> forall a : A, set_size (rm !!! a) <= 1.
-  Proof using.
-    unfold grel_map_functional.
-    cinduction rm using map_fold_cind with [> | intros i s m r Hi Hr].
-    - sauto lq:on.
-    - rewrite bool_unfold.
-      rewrite Hr; clear Hr.
-      setoid_rewrite lookup_total_unfold.
-      assert (set_size (m !!! i) <= 1).
-      { rewrite lookup_total_lookup. hauto. }
-      hfcrush.
-  Qed.
-
-  Lemma grel_map_functional_spec (rm : grel_map) :
-    grel_map_functional rm <->
-      forall a y z : A, y ∈ (rm !!! a) -> z ∈ (rm !!! a) -> y = z.
-  Proof using.
-    rewrite grel_map_functional_basic_spec.
-    setoid_rewrite set_size_le1.
-    reflexivity.
-  Qed.
-
   Definition grel_functional (r : grel) :=
-    grel_map_functional (grel_to_map r).
+    ∀ x y z : A, (x, y) ∈ r → (x, z) ∈ r → y = z.
 
-  Lemma grel_functional_spec (r : grel) :
-    grel_functional r <->
-      forall x y z : A, (x, y) ∈ r -> (x, z) ∈ r -> y = z.
+  Definition grel_functional_set_size r:
+    grel_functional r ↔ ∀ a : A, set_size (grel_to_map r !!! a) ≤ 1.
+  Proof using. setoid_rewrite set_size_le1. set_solver. Qed.
+
+  Definition grel_functional_set_size_list r:
+    grel_functional r ↔
+      ∀ s ∈ (map_to_list (grel_to_map r)).*2, set_size s ≤ 1 .
   Proof using.
-    unfold grel_functional.
-    rewrite grel_map_functional_spec.
-    set_solver.
+    rewrite grel_functional_set_size.
+    set_unfold.
+    setoid_rewrite lookup_total_lookup.
+    unfold default.
+    setoid_rewrite exists_pair.
+    hfcrush. (* aka magic *)
   Qed.
+
+  Global Instance grel_functional_decision r : Decision (grel_functional r).
+  Proof using. rewrite grel_functional_set_size_list. solve_decision. Defined.
 
   (*** Equivalence ***)
 
   Definition grel_equiv_on (s : gset A) (r : grel) :=
-    grel_symmetric r && grel_transitive r && bool_decide (⦗s⦘ ⊆ r).
+    grel_symmetric r ∧ grel_transitive r ∧ ⦗s⦘ ⊆ r.
 
   (*** Reflexivivity ***)
 
@@ -897,20 +837,32 @@ Section GRel.
   Definition grel_rc (r : grel) : grel := r ∪ ⦗fin_to_set A⦘.
   Notation "a ?" := (grel_rc a) (at level 1, format "a ?") : stdpp_scope.
 
-  Lemma grel_rc_spec (r : grel) x y : (x, y) ∈ r? <-> (x, y) ∈ r \/ x = y.
+  Lemma grel_rc_spec (r : grel) x y : (x, y) ∈ r? ↔ (x, y) ∈ r ∨ x = y.
   Proof using. unfold grel_rc. set_solver. Qed.
 
-  Definition grel_reflexive (r : grel) := r =? r?.
+  Global Instance set_unfold_elem_of_grel_rc r x P :
+    SetUnfoldElemOf x r P ->
+    SetUnfoldElemOf x (r?) (P ∨ x.1 = x.2).
+  Proof using. tcclean. destruct x. apply grel_rc_spec. Qed.
 
-  Lemma grel_reflexive_spec (r : grel) :
-    grel_reflexive r <-> forall x : A, (x, x) ∈ r.
-  Proof using.
-    unfold grel_reflexive.
-    rewrite bool_unfold.
-    split; intro H.
-    - rewrite H. hauto lq:on use:grel_rc_spec.
-    - set_unfold. hauto lq:on.
-  Qed.
+  Definition grel_reflexive (r : grel) := ∀ x, (x, x) ∈ r.
+
+  Lemma grel_reflexive_incl (r : grel) :
+    grel_reflexive r ↔ ⦗fin_to_set A⦘ ⊆ r.
+  Proof using. unfold grel_reflexive. set_unfold. hauto. Qed.
+
+  Global Instance grel_reflexive_decision r: Decision (grel_reflexive r).
+  Proof using finA. rewrite grel_reflexive_incl. solve_decision. Qed.
+
+  Lemma grel_reflexive_rew (r : grel) :
+    grel_reflexive r → r? = r.
+  Proof using. unfold grel_reflexive. set_unfold. hauto lq:on. Qed.
+  Hint Rewrite grel_reflexive_rew using done : grel.
+
+  Lemma grel_reflexive_rc (r : grel) :
+    grel_reflexive r?.
+  Proof using. unfold grel_reflexive. set_solver. Qed.
+  Hint Resolve grel_reflexive_rc : grel.
 
 End GRel.
 
@@ -919,10 +871,25 @@ Arguments grel _ {_ _}.
 Arguments grel_plus_cind : clear implicits.
 Arguments grel_plus_cind_r : clear implicits.
 
-
 (* Notations need to be redefined out of the section. *)
-Infix "⨾" := grel_seq (at level 44, left associativity) : stdpp_scope.
-Notation "r ⁻¹" := (grel_inv r) (at level 1) : stdpp_scope.
+(* TODO maybe grel scope would be better *)
 Notation "⦗ a ⦘" := (grel_from_set a) (format "⦗ a ⦘") : stdpp_scope.
+
+Infix "⨾" := grel_seq (at level 37, left associativity) : stdpp_scope.
+Infix "⨾@{ K }" := (@grel_seq K _ _) (at level 37, left associativity, only parsing) : stdpp_scope.
+Notation "(⨾)" := grel_seq (only parsing) : stdpp_scope.
+Notation "(⨾@{ K } )" := (@grel_seq K _ _) (only parsing) : stdpp_scope.
+Notation "( r ⨾.)" := (grel_seq r) (only parsing) : stdpp_scope.
+Notation "(.⨾ r )" := (λ r', r' ≡ r) (only parsing) : stdpp_scope.
+
+Notation "r ⁻¹" := (grel_inv r) (at level 1) : stdpp_scope.
 Notation "a ⁺" := (grel_plus a) (at level 1, format "a ⁺") : stdpp_scope.
-Notation "a ?" := (grel_rc a) (at level 1, format "a ?") : stdpp_scope.
+
+(** Users might not want the reflexive notation from finite type. Sometimes you
+work on an infinite type with an context-dependent finite set of value of that
+type. You could then want to define [a ?] as the reflexive closure on that set.
+Import this module if you want the general reflexivity notation for finite types
+*)
+Module GRelReflNot.
+  Notation "a ?" := (grel_rc a) (at level 1, format "a ?") : stdpp_scope.
+End GRelReflNot.

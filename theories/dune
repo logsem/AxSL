@@ -9,8 +9,6 @@
    iris_named_props
    RecordUpdate
    Hammer.Tactics
-   bbv
-   Sail
    SSCCommon
    ISASem
  )

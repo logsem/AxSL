@@ -1,38 +1,39 @@
-(*                                                                                  *)
-(*  BSD 2-Clause License                                                            *)
-(*                                                                                  *)
-(*  This applies to all files in this archive except folder                         *)
-(*  "system-semantics".                                                             *)
-(*                                                                                  *)
-(*  Copyright (c) 2023,                                                             *)
-(*     Zongyuan Liu                                                                 *)
-(*     Angus Hammond                                                                *)
-(*     Jean Pichon-Pharabod                                                         *)
-(*     Thibaut Pérami                                                               *)
-(*                                                                                  *)
-(*  All rights reserved.                                                            *)
-(*                                                                                  *)
-(*  Redistribution and use in source and binary forms, with or without              *)
-(*  modification, are permitted provided that the following conditions are met:     *)
-(*                                                                                  *)
-(*  1. Redistributions of source code must retain the above copyright notice, this  *)
-(*     list of conditions and the following disclaimer.                             *)
-(*                                                                                  *)
-(*  2. Redistributions in binary form must reproduce the above copyright notice,    *)
-(*     this list of conditions and the following disclaimer in the documentation    *)
-(*     and/or other materials provided with the distribution.                       *)
-(*                                                                                  *)
-(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"     *)
-(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE       *)
-(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE  *)
-(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE    *)
-(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL      *)
-(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR      *)
-(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER      *)
-(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,   *)
-(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE   *)
-(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
-(*                                                                                  *)
+(**************************************************************************************)
+(*  BSD 2-Clause License                                                              *)
+(*                                                                                    *)
+(*  This applies to all files in this archive except folder                           *)
+(*  "system-semantics".                                                               *)
+(*                                                                                    *)
+(*  Copyright (c) 2023,                                                               *)
+(*       Zongyuan Liu                                                                 *)
+(*       Angus Hammond                                                                *)
+(*       Jean Pichon-Pharabod                                                         *)
+(*       Thibaut Pérami                                                               *)
+(*                                                                                    *)
+(*  All rights reserved.                                                              *)
+(*                                                                                    *)
+(*  Redistribution and use in source and binary forms, with or without                *)
+(*  modification, are permitted provided that the following conditions are met:       *)
+(*                                                                                    *)
+(*  1. Redistributions of source code must retain the above copyright notice, this    *)
+(*     list of conditions and the following disclaimer.                               *)
+(*                                                                                    *)
+(*  2. Redistributions in binary form must reproduce the above copyright notice,      *)
+(*     this list of conditions and the following disclaimer in the documentation      *)
+(*     and/or other materials provided with the distribution.                         *)
+(*                                                                                    *)
+(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"       *)
+(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE         *)
+(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE    *)
+(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE      *)
+(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL        *)
+(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR        *)
+(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER        *)
+(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,     *)
+(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE     *)
+(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.              *)
+(*                                                                                    *)
+(**************************************************************************************)
 
 (* This file lifts rules of the low-level logic to mid-level *)
 From stdpp.bitvector Require Import definitions tactics.
@@ -51,7 +52,7 @@ Import uPred.
 Lemma reg_dep_fold_eq (dep : list _) (ts_regs dep_regs : gmap _ _):
   dep_regs ⊆ ts_regs ->
   dom dep_regs = list_to_set dep ->
-  (foldr (λ (r : AAInter.reg) (acc : gset Eid), from_option (λ rd : RegVal, reg_dep rd ∪ acc) acc (ts_regs !! r)) ∅
+  (foldr (λ (r : reg) (acc : gset Eid), from_option (λ rd : RegVal, reg_dep rd ∪ acc) acc (ts_regs !! r)) ∅
      dep = (map_fold (λ _ dv acc, reg_dep dv ∪ acc) ∅ dep_regs)).
 Proof.
   revert dep_regs ts_regs.
@@ -79,8 +80,8 @@ Proof.
     2:{
       intros. destruct (ts_regs !! a1), (ts_regs !! a2);simpl;auto. set_solver +.
     }
-    pose proof (list_foldr_absorb (filter (λ x : AAInter.reg, x = r) dep) (filter (λ x : AAInter.reg, x ≠ r) dep)
-                  (λ (r0 : AAInter.reg) (acc : gset Eid), from_option (λ rd : RegVal, reg_dep rd ∪ acc) acc (ts_regs !! r0))
+    pose proof (list_foldr_absorb (filter (λ x : reg, x = r) dep) (filter (λ x : reg, x ≠ r) dep)
+                  (λ (r0 : reg) (acc : gset Eid), from_option (λ rd : RegVal, reg_dep rd ∪ acc) acc (ts_regs !! r0))
       ∅ r ) as Heq.
     ospecialize* Heq.
     {
@@ -94,9 +95,9 @@ Proof.
     }
     { intros. rewrite Hlk /=. set_solver +. }
     rewrite Hlk /=in Heq. rewrite Heq.
-    specialize (H (filter (λ x : AAInter.reg, x ≠ r) dep)).
+    specialize (H (filter (λ x : reg, x ≠ r) dep)).
     ospecialize (H _).
-    exists r. exists (filter (λ x : AAInter.reg, x = r) dep).
+    exists r. exists (filter (λ x : reg, x = r) dep).
     rewrite -Permutation_cons_app. reflexivity.
     rewrite Permutation_app_comm. done.
     specialize (H (delete r dep_regs) ts_regs).
@@ -126,9 +127,9 @@ Require Import ISASem.Interface.
 Require Import Coq.Logic.FunctionalExtensionality.
 
 Lemma iMon_bind_assoc {a b c: Type}
-  (h : AACandExec.iMon a)
-  (f : a -> AACandExec.iMon b)
-  (g : b -> AACandExec.iMon c) :
+  (h : AAInter.iMon a)
+  (f : a -> AAInter.iMon b)
+  (g : b -> AAInter.iMon c) :
   (h ≫= (λ x, f x ≫= g)) = ((h ≫= f) ≫= g).
 Proof.
   rewrite /mbind.
@@ -142,43 +143,61 @@ Qed.
 Section rules.
   Context `{AAIrisG} `{!AAThreadG} `{ThreadGN}.
   Import ThreadState.
+  Import AACand.
 
-  Lemma idone {addr tid Φ}:
-    addr ↦ᵢ - -∗
-    Φ (LTSI.Done, addr) -∗
-    SSWPi (LTSI.Normal, addr) @ tid {{ Φ }}.
+  Lemma idone {addr tid}:
+    {SSi{{
+           addr ↦ᵢ -
+    }}}
+    (LTSI.Normal, addr) @ tid
+    {{{ RET (LTSI.Done, addr);
+        True
+    }}}.
   Proof.
-    iIntros "Hinst Hpost". rewrite sswpi_eq /sswpi_def.
+    iIntros (Φ') "Hinst HΦ".
+
+    rewrite sswpi_eq /sswpi_def.
     iIntros (?). iNamed 1. rewrite wpi_eq /wpi_def.
     iIntros (? [? ?]). repeat iNamed 1.
     iApply wp_sswp.
-    iApply (sswp_strong_mono with "[Hinst]").
-    { iApply (terminate with "[Hinst]") => //=. }
-    iIntros (? ->). simpl.
-    iApply ("Hcont" with "Hpost");done.
+
+    iApply (terminate with "[Hinst]") => //=.
+    iNext.
+
+    iIntros "_".
+    iSpecialize ("Hcont" with "[HΦ] [] Hinterp").
+    iApply "HΦ". done.
+    done. simpl. done.
   Qed.
 
   Ltac load_ins :=
     rewrite sswpi_eq /sswpi_def;
     iIntros (?); iNamed 1; rewrite wpi_eq /wpi_def;
     iIntros (? [? ?]); repeat iNamed 1;
-    iApply wp_sswp; iApply (sswp_strong_mono with "[Hinst]");
-    first (iApply (reload with "[Hinst]");eauto); iIntros (? ->); simpl.
+    iApply wp_sswp;
+    iApply (reload with "[Hinst]");eauto;iNext;iIntros "_".
 
   Lemma ibr {tid : Tid} {ins_addr addr} :
-    ins_addr ↦ᵢ (IBr addr)
-    ⊢
-    SSWPi (LTSI.Normal, ins_addr) @ tid
-        {{ λ ltsi, ⌜ltsi = (LTSI.Normal, addr)⌝ }}.
+    {SSi{{
+           ins_addr ↦ᵢ (IBr addr)
+    }}}
+    (LTSI.Normal, ins_addr) @ tid
+    {{{ RET (LTSI.Normal, addr);
+        True
+    }}}.
   Proof.
-    iIntros "Hinst". load_ins.
+    iIntros (Φ') "Hinst HΦ".
+    load_ins.
 
-    iApply wp_sswp. iApply (sswp_strong_mono with "[]").
+    iApply wp_sswp.
     iApply (reg_write);eauto.
-    simpl. iIntros (? ->). rewrite union_empty_l_L.
+    iNext.
+    iIntros "_".
+
     iNamed "Hinterp". iMod (reg_interp_update with "Hinterp_reg Hinterp_pc") as "[Hinterp_reg Hinterp_pc]".
 
-    iApply ("Hcont" $! (LTSI.Normal, addr) with "[//]").
+    iApply ("Hcont" $! (LTSI.Normal, addr) with "[HΦ]").
+    iApply "HΦ";done.
     iPureIntro. split;auto. apply lookup_insert_Some;naive_solver.
     iFrame.
   Qed.
@@ -197,13 +216,13 @@ Section rules.
   Proof.
     iIntros (Hreqs PC) "Hcont Hinterp".
 
-    iApply wp_sswp. iApply (sswp_strong_mono with "[]").
+    iApply wp_sswp.
     iApply reg_read;eauto.
-    simpl. iIntros (? ->).
+    iNext. iIntros "_".
 
-    iApply wp_sswp. iApply (sswp_strong_mono with "[]").
+    iApply wp_sswp.
     iApply reg_write;eauto.
-    simpl. iIntros (? ->).
+    iNext. iIntros "_".
 
     iNamed "Hinterp". iMod (reg_interp_update with "Hinterp_reg Hinterp_pc") as "[Hinterp_reg Hinterp_pc]".
 
@@ -213,70 +232,59 @@ Section rules.
   Qed.
 
   Lemma inop {tid : Tid} {ins_addr} :
-    ins_addr ↦ᵢ (INop)
-    ⊢
-    SSWPi (LTSI.Normal, ins_addr) @ tid
-        {{ λ ltsi, ⌜ltsi = (LTSI.Normal, (ins_addr `+Z` 4)%bv)⌝}}.
+    {SSi{{
+           ins_addr ↦ᵢ (INop)
+    }}}
+    (LTSI.Normal, ins_addr) @ tid
+    {{{ RET (LTSI.Normal, (ins_addr `+Z` 4)%bv);
+        True
+    }}}.
   Proof.
-    iIntros "Hinst". load_ins.
+    iIntros (Φ) "Hinst HΦ".
+    load_ins.
 
-    iApply (inc_pc with "[Hcont]");eauto.
+    iApply (inc_pc with "[Hcont HΦ]");eauto. simpl.
+    iIntros (?) "->".
+    iApply "Hcont".
+    iApply "HΦ";done.
   Qed.
 
-  Lemma idmb {tid : Tid} {ins_addr kind o_po_src} :
-    ins_addr ↦ᵢ (IDmb kind) -∗
-    o_po_src -{LPo}> -∗
-    SSWPi (LTSI.Normal, ins_addr) @ tid
-        {{ λ ltsi, ⌜ltsi = (LTSI.Normal,(ins_addr `+Z` 4)%bv)⌝ ∗
-                   ∃ eid, eid -{E}> (Event.B (AAArch.DMB kind)) ∗
-                   (* Po *)
-                   from_option (λ eid_po_src,  eid_po_src -{(Edge.Po)}> eid) emp o_po_src ∗
-                   (Some eid) -{LPo}>
-        }}.
-  Proof.
-    iIntros "Hinst Hpo". load_ins.
-
-    iApply wp_sswp. iApply (sswp_strong_mono with "[Hpo]").
-    { iApply (dmb with "Hpo"). reflexivity. }
-    iIntros (k) "[% (?&?&?)]";simpl;subst k.
-
-    iApply (wp_strong_mono with "[-]"). 2: { iIntros (?) "H". iModIntro. iExact "H". }
-    iApply (inc_pc with "[-Hinterp]");eauto.
-    iIntros (?) "Hpost". iApply "Hcont". iFrame.
-  Qed.
-
-  Lemma iisb {tid : Tid} {ins_addr o_po_src ctrl_srcs} :
-    ins_addr ↦ᵢ IIsb -∗
-    o_po_src -{LPo}> -∗
-    ctrl_srcs -{Ctrl}> -∗
-    SSWPi (LTSI.Normal, ins_addr) @ tid
-        {{ λ ltsi, ⌜ltsi = (LTSI.Normal, (ins_addr `+Z` 4)%bv) ⌝ ∗
-                   ∃ eid, eid -{E}> (Event.B AAArch.ISB) ∗
+  Lemma ibarrier {tid : Tid} {ins_addr kind o_po_src ctrl_srcs}:
+    {SSi{{
+           ins_addr ↦ᵢ (IBarrier kind) ∗
+           o_po_src -{LPo}> ∗
+           ctrl_srcs -{Ctrl}>
+    }}}
+     (LTSI.Normal, ins_addr) @ tid
+    {{{ RET (LTSI.Normal,(ins_addr `+Z` 4)%bv);
+                   ∃ eid, eid -{E}> (Event.B kind) ∗
                    (* Po *)
                    from_option (λ eid_po_src,  eid_po_src -{(Edge.Po)}> eid) emp o_po_src ∗
                    (Some eid) -{LPo}> ∗
                    (* Ctrl *)
                    ([∗ set] eid_ctrl_src ∈ ctrl_srcs, eid_ctrl_src -{(Edge.Ctrl)}> eid) ∗
                    ctrl_srcs -{Ctrl}>
-        }}.
+    }}}.
   Proof.
-    iIntros "Hinst Hpo Hctrl". load_ins.
+    iIntros (Φ) "(Hinst & Hpo & Hctrl) HΦ".
+    load_ins.
 
-    iApply wp_sswp. iApply (sswp_strong_mono with "[Hpo]").
-    iApply (isb with "Hpo"). reflexivity.
-    iIntros (?) "[-> (?&?&?&?)]";simpl.
-    rewrite /get_progress /=.
+    iApply wp_sswp.
+    iApply (barrier.barrier with "Hpo"). reflexivity.
+    iNext.
+    iIntros "(?&?&?&?)".
 
     iAssert (⌜ctrl_srcs ⊆ ts_ctrl_srcs ts⌝)%I with "[Hinterp Hctrl]" as %Hsub.
     iNamed "Hinterp". iApply (ctrl_srcs_interp_agree with "Hinterp_ctrl Hctrl").
 
     iApply (wp_strong_mono with "[-]"). 2: { iIntros (?) "H". iModIntro. iExact "H". }
-    iApply (inc_pc with "[-Hinterp]"); eauto.
-    iIntros (?) "Hpost". iApply "Hcont". iFrame.
-
+    iApply (inc_pc with "[-Hinterp]");eauto.
+    iIntros (?) "->".
+    iApply "Hcont".
+    iApply "HΦ".
+    iFrame.
     iApply big_sepS_subseteq;eauto.
   Qed.
-
 
   Fixpoint eval_ae_val ae (regs : RegFile) :=
     match ae with
@@ -284,9 +292,9 @@ Section rules.
     | AEreg r =>  (λ rv, rv.(reg_val)) <$> regs !! r
     | AEbinop op ae1 ae2 =>
         eval_ae_val ae1 regs
-          ≫= (λ w1 : bv (8 * AAArch.val_size),
+          ≫= (λ w1 : bv (dw_size),
                 eval_ae_val ae2 regs
-                  ≫= (λ w2 : bv (8 * AAArch.val_size),
+                  ≫= (λ w2 : bv (dw_size),
                         Some match op with
                           | AOplus => (w1 + w2)%bv
                           | AOminus => (w1 - w2)%bv
@@ -386,9 +394,9 @@ Section rules.
       iAssert (⌜ ts_regs ts !! r = Some x⌝)%I with "[Hinterp HDR]" as %Hreg_val.
       iNamed "Hinterp". iDestruct (reg_interp_agree with "Hinterp_reg HDR") as %Hlk;done.
 
-      iApply wp_sswp. iApply (sswp_strong_mono with "[]").
+      iApply wp_sswp.
       iApply reg_read;eauto.
-      iIntros (? ->); simpl.
+      iNext. iIntros "_"; simpl.
 
       iApply ("Hcont" with "[] [] [HDR]");auto.
       rewrite big_sepM_singleton //.
@@ -465,28 +473,29 @@ Section rules.
   Lemma ibne {tid : Tid} {ins_addr addr ae val ctrl_srcs} dep_regs:
     dom dep_regs = list_to_set (dep_of_AE_aux ae) ->
     eval_ae_val ae dep_regs = Some val ->
-    ins_addr ↦ᵢ (IBne ae addr) -∗
-    ctrl_srcs -{Ctrl}> -∗
-    ([∗ map] dr ↦ dv ∈ dep_regs, dr ↦ᵣ dv) -∗
-    SSWPi (LTSI.Normal, ins_addr) @ tid
-    {{ λ ltsi,
+    {SSi{{
+           ins_addr ↦ᵢ (IBne ae addr) ∗
+           ctrl_srcs -{Ctrl}> ∗
+           ([∗ map] dr ↦ dv ∈ dep_regs, dr ↦ᵣ dv)
+    }}}
+    (LTSI.Normal, ins_addr) @ tid
+    {{{ addr', RET (LTSI.Normal, addr');
         ([∗ map] dr ↦ dv ∈ dep_regs, dr ↦ᵣ dv) ∗
         ((map_fold (λ _ dv acc, reg_dep dv ∪ acc) ∅ dep_regs) ∪ ctrl_srcs) -{Ctrl}> ∗
-        ((⌜ltsi = (LTSI.Normal, (ins_addr `+Z` 4)%bv)⌝ ∗ ⌜val = (BV 64 0)⌝)
+        ((⌜ addr' = (ins_addr `+Z` 4)%bv⌝ ∗ ⌜val = (BV 64 0)⌝)
         ∨
-        (⌜ltsi = (LTSI.Normal, addr)⌝ ∗ ⌜val ≠ (BV 64 0)⌝))
-    }}.
+        (⌜addr' = addr⌝ ∗ ⌜val ≠ (BV 64 0)⌝))
+    }}}.
   Proof.
-    iIntros (Hdom Heval) "Hinst Hctrl Hrs". load_ins.
+    iIntros (Hdom Heval Φ) "(Hinst & Hctrl & Hrs) HΦ". load_ins.
     iApply (wp_strong_mono with "[-]"). 2: { iIntros (?) "H". iModIntro. iExact "H". }
     iApply (ae_eval with "[- Hinterp Hrs] Hrs"); eauto.
     iIntros (?) "%PC [% %] Hrs Hinterp".
     
-    iApply wp_sswp. iApply (sswp_strong_mono with "[]").
-    {
-      iApply branch_announce; eauto.
-    }
-    iIntros (? ->) "/=".
+    iApply wp_sswp.
+    iApply branch_announce; eauto.
+    iNext. iIntros "_".
+
     iNamed "Hinterp".
     iDestruct (ctrl_srcs_interp_union (map_fold (λ _ dv acc, reg_dep dv ∪ acc) ∅ dep_regs) with "Hinterp_ctrl Hctrl") as ">(Hinterp_ctrl & Hctrl)".
 
@@ -494,10 +503,10 @@ Section rules.
     case_bool_decide as Hpred.
     + iApply (wp_strong_mono with "[-]"). 2: { iIntros (?) "H". iModIntro. iExact "H". }
       iApply (inc_pc with "[-Hinterp_reg Hinterp_ctrl Hinterp_rmw Hinterp_pc]"); eauto.
-      { iIntros (?) "Hpost". iApply "Hcont". iFrame.
-        iLeft.
-        iFrame.
-        rewrite Hpred. iPureIntro. bv_unfold. bv_simplify. cbv. bv_solve.
+      { iIntros (?) "->". iApply "Hcont".
+        iApply "HΦ".
+        iFrame. iLeft.
+        rewrite Hpred. iPureIntro. bv_unfold. bv_simplify. cbv.  split;bv_solve.
       }
 
       iFrame. simpl.
@@ -505,15 +514,17 @@ Section rules.
       { rewrite union_empty_r_L. iFrame. }
       { exact Hrs_sub. }
       { exact Hdom. }
-    + iApply wp_sswp. iApply (sswp_strong_mono with "[]"). 
-      iApply (reg_write); eauto. 
-      simpl. iIntros (? ->). rewrite union_empty_l_L.
+    + iApply wp_sswp.
+      iApply (reg_write); eauto.
+      iNext. iIntros "_".
       iMod (reg_interp_update with "Hinterp_reg Hinterp_pc") as "[Hinterp_reg Hinterp_pc]".
       simpl.
       
-      iApply ("Hcont" $! (LTSI.Normal, addr) with "[Hctrl Hrs]").
+      iApply ("Hcont" $! (LTSI.Normal, addr) with "[Hctrl Hrs HΦ]").
       {
-        iFrame. iRight. iSplit; [done|]. 
+        iApply "HΦ".
+        iFrame.
+        iRight. iSplit; [done|].
         iPureIntro. intro Heq. rewrite Heq in Hpred. contradict Hpred. cbv. bv_solve.
       }
       {
@@ -530,24 +541,26 @@ Section rules.
   Lemma iassign {tid : Tid} {ins_addr r rv ae val} dep_regs:
     dom dep_regs = list_to_set (dep_of_AE_aux ae) ->
     eval_ae_val ae dep_regs = Some val ->
-    ins_addr ↦ᵢ (IAssign r ae) -∗
-    r ↦ᵣ rv -∗
-    ([∗ map] dr ↦ dv ∈ dep_regs, dr ↦ᵣ dv) -∗
-    SSWPi (LTSI.Normal, ins_addr) @ tid
-        {{ λ ltsi, ⌜ltsi = (LTSI.Normal, (ins_addr `+Z` 4)%bv)⌝ ∗
-                   r ↦ᵣ (mk_regval val (map_fold (λ _ dv acc, reg_dep dv ∪ acc) ∅ dep_regs)) ∗
-                   ([∗ map] dr ↦ dv ∈ dep_regs, dr ↦ᵣ dv)
-        }}.
+    {SSi{{
+           ins_addr ↦ᵢ (IAssign r ae) ∗
+           r ↦ᵣ rv ∗
+           ([∗ map] dr ↦ dv ∈ dep_regs, dr ↦ᵣ dv)
+    }}}
+     (LTSI.Normal, ins_addr) @ tid
+    {{{ RET (LTSI.Normal, (ins_addr `+Z` 4)%bv);
+        r ↦ᵣ (mk_regval val (map_fold (λ _ dv acc, reg_dep dv ∪ acc) ∅ dep_regs)) ∗
+        ([∗ map] dr ↦ dv ∈ dep_regs, dr ↦ᵣ dv)
+    }}}.
   Proof.
-    iIntros (Hdom Heval) "Hinst HR HDR". load_ins.
+    iIntros (Hdom Heval Φ) "(Hinst & HR & HDR) HΦ". load_ins.
 
     iApply (wp_strong_mono with "[-]"). 2: { iIntros (?) "H". iModIntro. iExact "H". }
     iApply (ae_eval with "[- Hinterp HDR] HDR");eauto.
     iIntros (?) "%PC [% %] HDR Hinterp".
 
-    iApply wp_sswp. iApply (sswp_strong_mono with "[]").
+    iApply wp_sswp.
     iApply reg_write;eauto.
-    iIntros (? ->); simpl.
+    iNext. iIntros "_".
 
     iNamed "Hinterp".
     iDestruct (reg_interp_agree_big with "Hinterp_reg HDR") as %Hsub.
@@ -558,24 +571,26 @@ Section rules.
     iApply (inc_pc with "[-Hinterp_reg Hinterp_ctrl Hinterp_rmw Hinterp_pc]");auto.
     { simpl. rewrite lookup_insert_ne //. }
 
-    iIntros (?) "Hpost". iApply "Hcont". iFrame. iFrame.
-
-    rewrite union_empty_r_L. rewrite /incr_cntr /=. rewrite (reg_dep_fold_eq _ _ dep_regs) //.
+    iIntros (?) "->". iApply "Hcont".
+    iApply "HΦ". iFrame. iFrame.
+    simpl.
+    rewrite union_empty_r_L. rewrite /incr_cntr /=.
+    rewrite (reg_dep_fold_eq _ _ dep_regs) //.
   Qed.
 
   (** helper lemmas *)
   Lemma mem_read_external {tid : Tid} {o_po_src ctrl_srcs ts ctxt dep addr kind_s kind_v mrmw Ψ}
     R po_srcs lob_annot dep_regs:
-    ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemRead 8 (readreq_of_store kind_s kind_v addr dep)) ctxt ->
+    ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemRead 8 (readreq_of_load kind_v kind_s addr (Some dep))) ctxt ->
     dom dep_regs = list_to_set (AAInter.DepOn.regs dep) ->
     (* TODO : make a definition *)
     let reg_deps := map_fold (λ _ dv acc, reg_dep dv ∪ acc) ∅ dep_regs in
     let mem_deps :=
       foldr (λ (idx : N) (acc : gset Eid),
-               from_option (λ md : nat, {[{| EID.tid := tid; EID.iid := ts.(ts_iis).(iis_iid); EID.num := md |}]} ∪ acc) acc
+               from_option (λ md : nat, {[{| EID.tid := tid; EID.iid := ts.(ts_iis).(iis_iid); EID.ieid := md |}]} ∪ acc) acc
                  (ts.(ts_iis).(iis_mem_reads) !! idx)) ∅ (AAInter.DepOn.mem_reads dep) in
     let R_graph_facts := (λ eid val eid_w,
-                            eid -{E}> (Event.R kind_s kind_v addr val) ∗
+                            eid -{E}> (Event.R kind_v kind_s addr val) ∗
                             ⌜(EID.tid eid) = tid ∧ (EID.iid eid) = ts.(ts_iis).(iis_iid)⌝ ∗
                             (* Po *)
                             ([∗ set] eid_po_src ∈ po_srcs, eid_po_src -{(Edge.Po)}> eid) ∗
@@ -599,7 +614,7 @@ Section rules.
     ([∗ map] node ↦ annot ∈ lob_annot, node ↦ₐ annot) -∗
     (∀ eid,
        (* Lob edge formers *)
-       (eid -{N}> (Edge.R kind_s kind_v) -∗
+       (eid -{N}> (Edge.R kind_v kind_s) -∗
         ([∗ set] eid_po_src ∈ po_srcs, eid_po_src -{(Edge.Po)}> eid) -∗
         ([∗ set] eid_ctrl_src ∈ ctrl_srcs, eid_ctrl_src -{(Edge.Ctrl)}> eid) -∗
         ([∗ set] eid_addr_src ∈ reg_deps ∪ mem_deps, eid_addr_src -{(Edge.Addr)}> eid) -∗
@@ -607,15 +622,15 @@ Section rules.
        (* FE *)
        (∃ prot q Q,
            (([∗ map] _ ↦ annot ∈ lob_annot, annot) -∗
-            Prot[addr, q | prot ] ∗ Q) ∗
+            『addr, q | prot』 ∗ Q) ∗
            ∀ val eid_w,
-          Prot[addr, q | prot ] ∗ Q ∗
+          『addr, q | prot』 ∗ Q ∗
           R_graph_facts eid val eid_w ∗
           ▷(prot val eid_w)
           ={⊤}[∅]▷=∗
           R addr val eid_w ∗ (prot val eid_w))) -∗
     (* continuation *)
-    (
+    ▷ (
       ∀ ts' : ThreadState.t,
         "Hinterp" ∷ thread_local_interp ts' -∗
         ⌜ts'.(ts_regs) !! RNPC = ts.(ts_regs) !! RNPC⌝ -∗
@@ -624,7 +639,7 @@ Section rules.
           ∃ val eid_w,
           (* update lts' accordingly *)
           ∃ eid,
-            ⌜ts'.(ts_iis)= (incr_cntr ts).(ts_iis)<|iis_mem_reads := ((ts.(ts_iis).(iis_mem_reads)) ++ [eid.(EID.num)])%list|>
+            ⌜ts'.(ts_iis)= (incr_cntr ts).(ts_iis)<|iis_mem_reads := ((ts.(ts_iis).(iis_mem_reads)) ++ [eid.(EID.ieid)])%list|>
             ∧ ts'.(ts_reqs) = ctxt (inl(val, None)) ⌝ ∗
             R_graph_facts eid val eid_w ∗
             (* node annotation *)
@@ -634,8 +649,7 @@ Section rules.
             (* local writes at addr is unchanged *)
             last_local_write tid addr None ∗
             (* Update this read as the rmw pred if atomic *)
-            (if bool_decide (kind_v = AV_exclusive) || bool_decide (kind_v = AV_atomic_rmw)
-             then Some eid else mrmw) -{Rmw}> ∗
+            (if bool_decide (kind_v = AV_exclusive) then Some eid else mrmw) -{Rmw}> ∗
             ([∗ map] dr ↦ dv ∈ dep_regs, dr ↦ᵣ dv)
         ) -∗
       WP LThreadState.LTSNormal ts' @ tid  {{ lts, to_lts_Phi Ψ lts }}
@@ -649,10 +663,11 @@ Section rules.
     iDestruct (ctrl_srcs_interp_agree with "Hinterp_ctrl Hctrl") as %Hctrl_sub.
     iDestruct (rmw_pred_interp_agree with "Hinterp_rmw Hrmw") as %Hrmw_ag.
     iApply wp_sswp.
-    iApply (sswp_strong_mono' with "[-Hinterp_reg Hinterp_ctrl Hinterp_rmw Hinterp_pc HDRs Hctrl Hrmw Hcont]").
+    (* iApply (sswp_strong_mono' with "[-Hinterp_reg Hinterp_ctrl Hinterp_rmw Hinterp_pc HDRs Hctrl Hrmw Hcont]"). *)
     iDestruct ("Hef_fe" $! (progress_to_node (get_progress ts) tid)) as "[Hef Hfe]".
 
-    iApply (mem_read_external with "Hpo_src Hpo_srcs Hlw Hna [Hef] [Hfe]"). eauto.
+    iApply (mem_read_external with "[$Hpo_src $Hpo_srcs $Hlw $Hna Hef Hfe]"). eauto.
+    iSplitL "Hef".
     {
       iIntros "E_R Hpo Hctrl Haddr".
       iApply ("Hef" with "E_R Hpo [Hctrl] [Haddr]").
@@ -672,19 +687,17 @@ Section rules.
       iApply big_sepS_subseteq;eauto.
       iExact "Hfe".
     }
-    iIntros (k) "(%&%&%&(?&?&Hctrl'&?&?&?&?)&Hlpo&Hna&Hlw)". subst k.
-    iApply interp_mod_bupd'.
-    iMod (rmw_pred_interp_update (if bool_decide (kind_v = AV_exclusive) || bool_decide (kind_v = AV_atomic_rmw)
+    iNext.
+    iIntros (??) "((?&?&Hctrl'&?&?&?&?)&Hlpo&Hna&Hlw)".
+    iMod (rmw_pred_interp_update (if bool_decide (kind_v = AV_exclusive)
       then Some (progress_to_node (get_progress ts) tid) else mrmw) with "Hinterp_rmw Hrmw") as "[Hinterp_rmw Hrmw]".
     simpl.
-    iFrame. simpl. iModIntro.
+    iFrame. simpl.
+    (* iModIntro. *)
 
     iApply ("Hcont" with "[Hinterp_reg Hinterp_ctrl Hinterp_pc Hinterp_rmw] [] [-]").
     rewrite Hrmw_ag. simpl. iFrame. simpl.
-    destruct kind_v;simpl;
-    case_bool_decide as Heq; first inversion Heq;
-    case_bool_decide as Heq'; first inversion Heq'; simpl; try done.
-    simpl;done.
+    done.
 
     iExists val,eid_w,_. iSplit.
     2:{
@@ -697,23 +710,23 @@ Section rules.
 
   Lemma mem_write_non_xcl {tid : Tid} {o_po_src ctrl_srcs ts ctxt addr kind_s kind_v val
                               ot_coi_pred dep_addr dep_data Ψ} R po_srcs lob_annot dep_regs_data dep_regs_addr:
-    ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemWrite 8 (writereq_of_store kind_s kind_v val addr dep_addr dep_data)) ctxt ->
+    ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemWrite 8 (writereq_of_store kind_v kind_s val addr (Some dep_addr) (Some dep_data))) ctxt ->
     kind_v = AV_plain ->
     dep_regs_addr ∩ dep_regs_data ⊆ dep_regs_data ->
     dom dep_regs_addr = list_to_set (AAInter.DepOn.regs dep_addr) ->
     let reg_deps_addr := map_fold (λ _ dv acc, reg_dep dv ∪ acc) ∅ dep_regs_addr in
     let mem_deps_addr :=
       foldr (λ (idx : N) (acc : gset Eid),
-               from_option (λ md : nat, {[{| EID.tid := tid; EID.iid := ts.(ts_iis).(iis_iid); EID.num := md |}]} ∪ acc) acc
+               from_option (λ md : nat, {[{| EID.tid := tid; EID.iid := ts.(ts_iis).(iis_iid); EID.ieid := md |}]} ∪ acc) acc
                  (ts.(ts_iis).(iis_mem_reads) !! idx)) ∅ (AAInter.DepOn.mem_reads dep_addr) in
     dom dep_regs_data = list_to_set (AAInter.DepOn.regs dep_data) ->
     let reg_deps_data := map_fold (λ _ dv acc, reg_dep dv ∪ acc) ∅ dep_regs_data in
     let mem_deps_data :=
       foldr (λ (idx : N) (acc : gset Eid),
-               from_option (λ md : nat, {[{| EID.tid := tid; EID.iid := ts.(ts_iis).(iis_iid); EID.num := md |}]} ∪ acc) acc
+               from_option (λ md : nat, {[{| EID.tid := tid; EID.iid := ts.(ts_iis).(iis_iid); EID.ieid := md |}]} ∪ acc) acc
                  (ts.(ts_iis).(iis_mem_reads) !! idx)) ∅ (AAInter.DepOn.mem_reads dep_data) in
     let R_graph_facts := (λ eid,
-      eid -{E}> (Event.W kind_s kind_v addr val) ∗
+      eid -{E}> (Event.W kind_v kind_s addr val) ∗
       ⌜(EID.tid eid) = tid ∧ (EID.iid eid) = ts.(ts_iis).(iis_iid) ⌝ ∗
       (* Po *)
       ([∗ set] eid_po_src ∈ po_srcs, eid_po_src -{(Edge.Po)}> eid) ∗
@@ -733,7 +746,7 @@ Section rules.
     (* node annotations *)
     ([∗ map] node ↦ annot ∈ lob_annot, node ↦ₐ annot) -∗
     (* Lob edge formers *)
-    (∀ eid, (eid -{N}> (Edge.W kind_s kind_v) -∗
+    (∀ eid, (eid -{N}> (Edge.W kind_v kind_s) -∗
      ([∗ set] eid_po_src ∈ po_srcs, eid_po_src -{(Edge.Po)}> eid) -∗
      ([∗ set] eid_ctrl_src ∈ ctrl_srcs, eid_ctrl_src -{(Edge.Ctrl)}> eid) -∗
      ([∗ set] eid_addr_src ∈ reg_deps_addr ∪ mem_deps_addr, eid_addr_src -{(Edge.Addr)}> eid) -∗
@@ -741,18 +754,18 @@ Section rules.
      [∗ set] eid_pre ∈ dom lob_annot, eid_pre -{Edge.Lob}> eid) ∗
     (* FE *)
     (∃ prot q Q,
-       (([∗ map] _ ↦ annot ∈ lob_annot, annot) -∗ Prot[addr, q | prot ] ∗ Q) ∗
-       (Prot[addr, q | prot ] ∗ Q ∗
+       (([∗ map] _ ↦ annot ∈ lob_annot, annot) -∗ 『addr, q | prot』 ∗ Q) ∗
+       (『addr, q | prot』 ∗ Q ∗
        R_graph_facts eid
        ={⊤}[∅]▷=∗
        R eid ∗ (prot val eid)))
     ) -∗
     (* continuation *)
-    (
+    ▷ (
       ∀ ts' : ThreadState.t,
         "Hinterp" ∷ thread_local_interp ts' -∗
         ⌜ts'.(ts_regs) !! RNPC = ts.(ts_regs) !! RNPC
-        ∧ ts'.(ts_reqs) = ctxt (inl None)⌝ -∗
+        ∧ ts'.(ts_reqs) = ctxt (inl true)⌝ -∗
         ((* exists a bool (indicating if the (atomic) write succeeded) *)
           (* update lts' accordingly *)
           (* Current event is a write *)
@@ -793,10 +806,12 @@ Section rules.
       rewrite lookup_union_r //. rewrite -elem_of_dom in n. apply not_elem_of_dom. done.
     }
 
-    iApply wp_sswp. iApply (sswp_strong_mono with "[-Hinterp_reg Hinterp_ctrl Hinterp_rmw Hinterp_pc HDRs Hctrl Hcont]").
+    iApply wp_sswp.
+    (* iApply (sswp_strong_mono with "[-Hinterp_reg Hinterp_ctrl Hinterp_rmw Hinterp_pc HDRs Hctrl Hcont]"). *)
 
     iDestruct ("Hef_fe" $! (progress_to_node (get_progress ts) tid)) as "[Hef Hfe]".
-    iApply (mem_write_non_xcl with "Hpo_src Hpo_srcs Hlw Hna [Hef] [Hfe]");eauto.
+    iApply (mem_write_non_xcl with "[$Hpo_src $Hpo_srcs $Hlw $Hna Hef Hfe]");eauto.
+    iSplitL "Hef".
     {
       iIntros "E_R Hpo Hctrl Haddr Hdata".
       iApply ("Hef" with "E_R Hpo [Hctrl] [Haddr] [Hdata]").
@@ -820,7 +835,8 @@ Section rules.
       iExact "Hfe".
       { etrans. 2:exact Hdr_sub. apply map_union_subseteq_l. }
     }
-    iIntros (k) "(%&(?&?&?&?&?&?)&?&Hctrl'&?)"; subst k. simpl.
+    iNext.
+    iIntros "((?&?&?&?&?&?)&?&Hctrl'&?)". simpl.
     iApply ("Hcont" with "[Hinterp_reg Hinterp_ctrl Hinterp_pc Hinterp_rmw] [] [-]").
     iFrame. 
     done.
@@ -833,15 +849,15 @@ Section rules.
 
 
   Lemma mem_write_xcl_None {tid : Tid} {ts ctxt addr kind_s kind_v val dep_addr dep_data Ψ}:
-    ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemWrite 8 (writereq_of_store kind_s kind_v val addr dep_addr dep_data)) ctxt ->
-    kind_v = AV_atomic_rmw ∨ kind_v = AV_exclusive ->
+    ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemWrite 8 (writereq_of_store kind_v kind_s val addr dep_addr dep_data)) ctxt ->
+    kind_v = AV_exclusive ->
     None -{Rmw}> -∗
     (* continuation *)
-    (
+    ▷(
       ∀ ts' : ThreadState.t,
         "Hinterp" ∷ thread_local_interp ts' -∗
         ⌜ts'.(ts_regs) !! RNPC = ts.(ts_regs) !! RNPC
-        ∧ ts'.(ts_reqs) = ctxt (inl (Some false))⌝ -∗
+        ∧ ts'.(ts_reqs) = ctxt (inl false)⌝ -∗
         None -{Rmw}> -∗
         WP LThreadState.LTSNormal ts' @ tid  {{ lts, to_lts_Phi Ψ lts }}
     ) -∗
@@ -852,31 +868,32 @@ Section rules.
     iNamed "Hinterp".
 
     iDestruct (rmw_pred_interp_agree with "Hinterp_rmw Hrmw_src") as %?.
-    iApply wp_sswp. iApply (sswp_strong_mono with "[-Hinterp_rmw Hinterp_reg Hinterp_ctrl Hinterp_pc Hrmw_src Hcont]").
+    iApply wp_sswp.
+    (* iApply (sswp_strong_mono with "[-Hinterp_rmw Hinterp_reg Hinterp_ctrl Hinterp_pc Hrmw_src Hcont]"). *)
     iApply mem_write_xcl_None;eauto.
-    iIntros (k) "%";subst k.
+    iNext. iIntros "_".
     iApply ("Hcont" with "[Hinterp_reg Hinterp_ctrl Hinterp_pc Hinterp_rmw] [] [-]").
     iFrame. auto. done.
   Qed.
 
-  Lemma mem_write_xcl_Some {tid : Tid} {o_po_src ts ctxt addr kind_s kind_v val ot_coi_pred dep_addr dep_data rmw_src Ψ} R R_loc_in po_srcs ctrl_srcs lob_annot (dep_regs_addr: gmap _ _) dep_regs_data:
-    ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemWrite 8 (writereq_of_store kind_s kind_v val addr dep_addr dep_data)) ctxt ->
-    kind_v = AV_atomic_rmw ∨ kind_v = AV_exclusive ->
+  Lemma mem_write_xcl_Some {tid : Tid} {o_po_src ts ctxt addr kind_s kind_v val ot_coi_pred dep_addr dep_data rmw_src Ψ} R_tied R_loc_in po_srcs ctrl_srcs lob_annot (dep_regs_addr: gmap _ _) dep_regs_data:
+    ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemWrite 8 (writereq_of_store kind_v kind_s val addr (Some dep_addr) (Some dep_data))) ctxt ->
+    kind_v = AV_exclusive ->
     dep_regs_addr ∩ dep_regs_data ⊆ dep_regs_data ->
     dom dep_regs_addr = list_to_set (AAInter.DepOn.regs dep_addr) ->
     let reg_deps_addr := map_fold (λ _ dv acc, reg_dep dv ∪ acc) ∅ dep_regs_addr in
     let mem_deps_addr :=
       foldr (λ (idx : N) (acc : gset Eid),
-               from_option (λ md : nat, {[{| EID.tid := tid; EID.iid := ts.(ts_iis).(iis_iid); EID.num := md |}]} ∪ acc) acc
+               from_option (λ md : nat, {[{| EID.tid := tid; EID.iid := ts.(ts_iis).(iis_iid); EID.ieid := md |}]} ∪ acc) acc
                  (ts.(ts_iis).(iis_mem_reads) !! idx)) ∅ (AAInter.DepOn.mem_reads dep_addr) in
     dom dep_regs_data = list_to_set (AAInter.DepOn.regs dep_data) ->
     let reg_deps_data := map_fold (λ _ dv acc, reg_dep dv ∪ acc) ∅ dep_regs_data in
     let mem_deps_data :=
       foldr (λ (idx : N) (acc : gset Eid),
-               from_option (λ md : nat, {[{| EID.tid := tid; EID.iid := ts.(ts_iis).(iis_iid); EID.num := md |}]} ∪ acc) acc
+               from_option (λ md : nat, {[{| EID.tid := tid; EID.iid := ts.(ts_iis).(iis_iid); EID.ieid := md |}]} ∪ acc) acc
                  (ts.(ts_iis).(iis_mem_reads) !! idx)) ∅ (AAInter.DepOn.mem_reads dep_data) in
     let R_graph_facts := (λ eid,
-        eid -{E}> (Event.W kind_s kind_v addr val) ∗
+        eid -{E}> (Event.W kind_v kind_s addr val) ∗
         ⌜(EID.tid eid) = tid ∧ (EID.iid eid) = ts.(ts_iis).(iis_iid)⌝ ∗
         (* Po *)
         ([∗ set] eid_po_src ∈ po_srcs, eid_po_src -{(Edge.Po)}> eid) ∗
@@ -889,7 +906,7 @@ Section rules.
         (* There must be a write with same addr and val *)
         (from_option (λ eid_coi_pred, ⌜EID.tid eid_coi_pred = tid⌝ ∗ eid_coi_pred -{(Edge.Co)}> eid) emp ot_coi_pred) ∗
         (* Rmw *)
-        rmw_src -{(Edge.Rmw)}> eid)%I in
+        rmw_src -{(Edge.Lxsx)}> eid)%I in
     o_po_src -{LPo}> -∗
     ([∗ set] e_po_src ∈ po_srcs, e_po_src -{Po}>) -∗
     ctrl_srcs -{Ctrl}> -∗
@@ -900,29 +917,29 @@ Section rules.
     ([∗ map] node ↦ annot ∈ lob_annot, node ↦ₐ annot) -∗
     (* Lob edge formers *)
     (∀ eid,
-      (eid -{N}> (Edge.W kind_s kind_v) -∗
+      (eid -{N}> (Edge.W kind_v kind_s) -∗
      ([∗ set] eid_po_src ∈ po_srcs, eid_po_src -{(Edge.Po)}> eid) -∗
      ([∗ set] eid_ctrl_src ∈ ctrl_srcs, eid_ctrl_src -{(Edge.Ctrl)}> eid) -∗
      ([∗ set] eid_addr_src ∈ reg_deps_addr ∪ mem_deps_addr, eid_addr_src -{(Edge.Addr)}> eid) -∗
      ([∗ set] eid_data_src ∈ reg_deps_data ∪ mem_deps_data, eid_data_src -{(Edge.Data)}> eid) -∗
-     rmw_src -{(Edge.Rmw)}> eid -∗
+     rmw_src -{(Edge.Lxsx)}> eid -∗
      ([∗ set] eid_pre ∈ dom lob_annot, eid_pre -{Edge.Lob}> eid)) ∗
     (* local resources that might flow into FE *)
     R_loc_in ∗
     (* FE *)
     (∃ prot q Q,
-       (([∗ map] _ ↦ annot ∈ lob_annot, annot) -∗ Prot[addr, q | prot ] ∗ Q) ∗
-      (R_loc_in ∗ Prot[addr, q | prot ] ∗ Q ∗ R_graph_facts eid ∗ Tok{ eid }
+       (([∗ map] _ ↦ annot ∈ lob_annot, annot) -∗ 『addr, q | prot』 ∗ Q) ∗
+      (R_loc_in ∗ 『addr, q | prot』 ∗ Q ∗ R_graph_facts eid
        ={⊤}[∅]▷=∗
-       R ∗ (prot val eid)))) -∗
+       R_tied eid ∗ (prot val eid)))) -∗
     (* continuationh *)
-    (
+    ▷ (
       ∀ ts' : ThreadState.t,
         "Hinterp" ∷ thread_local_interp ts' -∗
         ⌜ts'.(ts_regs) !! RNPC = ts.(ts_regs) !! RNPC⌝ -∗
       (* exists a bool (indicating if the (atomic) write succeeded) *)
       (∃ b_succ,
-          ⌜ts'.(ts_reqs) = ctxt (inl (Some b_succ))⌝ ∗
+          ⌜ts'.(ts_reqs) = ctxt (inl b_succ)⌝ ∗
           ctrl_srcs -{Ctrl}> ∗
           Some rmw_src -{Rmw}> ∗
           (* update lts' accordingly *)
@@ -931,10 +948,11 @@ Section rules.
             ∃ eid,
               R_graph_facts eid ∗
               (* R flowing in via lob *)
-              (eid ↦ₐ R) ∗
+              (eid ↦ₐ R_tied eid) ∗
               (Some eid) -{LPo}> ∗
               (* local writes at addr is updated *)
-              last_local_write tid addr (Some eid)
+              last_local_write tid addr (Some eid) ∗
+              Tok{ eid }
           else
             (* failure, things stay unchanged *)
             o_po_src -{LPo}> ∗
@@ -970,11 +988,13 @@ Section rules.
       rewrite lookup_union_r //. rewrite -elem_of_dom in n. apply not_elem_of_dom. done.
     }
 
-    iApply wp_sswp. iApply (sswp_strong_mono with "[-Hinterp_reg Hinterp_ctrl Hinterp_rmw Hinterp_pc HDRs Hctrl Hrmw_src Hcont]").
+    iApply wp_sswp.
+    (* iApply (sswp_strong_mono with "[-Hinterp_reg Hinterp_ctrl Hinterp_rmw Hinterp_pc HDRs Hctrl Hrmw_src Hcont]"). *)
 
     iDestruct ("Hef_fe" $! (progress_to_node (get_progress ts) tid)) as "[Hef [R_in Hfe]]".
 
-    iApply (mem_write_xcl_Some with "Hpo_src Hpo_srcs Hlw Hna [Hef] R_in [Hfe]"). eauto. eauto. auto.
+    iApply (mem_write_xcl_Some with "[$Hpo_src $Hpo_srcs $Hlw $Hna Hef R_in Hfe]"). eauto. eauto. auto.
+    iSplitL "Hef".
     {
       iIntros "E_R Hpo Hctrl Haddr Hdata Hrmw".
       iApply ("Hef" with "E_R Hpo [Hctrl] [Haddr] [Hdata] Hrmw").
@@ -982,6 +1002,10 @@ Section rules.
       simpl. erewrite reg_dep_fold_eq;eauto.
       { etrans. 2:exact Hdr_sub. apply map_union_subseteq_l. }
       simpl. erewrite reg_dep_fold_eq;eauto.
+    }
+    iSplitL "R_in".
+    {
+      iExact "R_in".
     }
     {
       rewrite /R_graph_facts /=. iDestruct "Hfe" as "(%&%&%&?&Hfe)".
@@ -991,13 +1015,14 @@ Section rules.
       erewrite (reg_dep_fold_eq _ (ts_regs ts) dep_regs_addr);eauto. erewrite (reg_dep_fold_eq _ (ts_regs ts) dep_regs_data);eauto.
       rewrite /reg_deps_addr.
       iSpecialize ("Hfe" with "[-]").
-      iDestruct "H" as "(?&?&(?&?&?&?&?&?) &H)". iFrame.
+      iDestruct "H" as "(?&?&(?&?&?&?&?&?))". iFrame.
+      (* iDestruct "H" as "(?&?&(?&?&?&?&?&?) &H)". iFrame. *)
       iSplit;first done.
       iApply big_sepS_subseteq;eauto.
       iExact "Hfe".
       { etrans. 2:exact Hdr_sub. apply map_union_subseteq_l. }
     }
-    iIntros (k) "[% [% H]]";subst k.
+    iNext. iIntros (?) "H".
     simpl. iApply ("Hcont" with "[Hinterp_reg Hinterp_ctrl Hinterp_pc Hinterp_rmw] [] [-]").
     iFrame. auto.
 
@@ -1014,107 +1039,107 @@ Section rules.
     { etrans. 2:exact Hdr_sub. apply map_union_subseteq_l. }
   Qed.
 
-  Lemma mem_write_xcl_Some_inv {tid : Tid} {o_po_src ts ctxt addr kind_s kind_v val ot_coi_pred dep_addr dep_data rmw_src Ψ} R_loc_in R po_srcs ctrl_srcs lob_annot (dep_regs_addr: gmap _ _) dep_regs_data:
-    ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemWrite 8 (writereq_of_store kind_s kind_v val addr dep_addr dep_data)) ctxt ->
-    kind_v = AV_atomic_rmw ∨ kind_v = AV_exclusive ->
-    dep_regs_addr ∩ dep_regs_data ⊆ dep_regs_data ->
-    dom dep_regs_addr = list_to_set (AAInter.DepOn.regs dep_addr) ->
-    let reg_deps_addr := map_fold (λ _ dv acc, reg_dep dv ∪ acc) ∅ dep_regs_addr in
-    let mem_deps_addr :=
-      foldr (λ (idx : N) (acc : gset Eid),
-               from_option (λ md : nat, {[{| EID.tid := tid; EID.iid := ts.(ts_iis).(iis_iid); EID.num := md |}]} ∪ acc) acc
-                 (ts.(ts_iis).(iis_mem_reads) !! idx)) ∅ (AAInter.DepOn.mem_reads dep_addr) in
-    dom dep_regs_data = list_to_set (AAInter.DepOn.regs dep_data) ->
-    let reg_deps_data := map_fold (λ _ dv acc, reg_dep dv ∪ acc) ∅ dep_regs_data in
-    let mem_deps_data :=
-      foldr (λ (idx : N) (acc : gset Eid),
-               from_option (λ md : nat, {[{| EID.tid := tid; EID.iid := ts.(ts_iis).(iis_iid); EID.num := md |}]} ∪ acc) acc
-                 (ts.(ts_iis).(iis_mem_reads) !! idx)) ∅ (AAInter.DepOn.mem_reads dep_data) in
-    let R_graph_facts := (λ eid,
-        eid -{E}> (Event.W kind_s kind_v addr val) ∗
-        ⌜(EID.tid eid) = tid ∧ (EID.iid eid) = ts.(ts_iis).(iis_iid)⌝ ∗
-        (* Po *)
-        ([∗ set] eid_po_src ∈ po_srcs, eid_po_src -{(Edge.Po)}> eid) ∗
-        (* Ctrl *)
-        ([∗ set] eid_ctrl_src ∈ ctrl_srcs, eid_ctrl_src -{(Edge.Ctrl)}> eid) ∗
-        (* Data *)
-        ([∗ set] eid_addr_src ∈ reg_deps_addr ∪ mem_deps_addr, eid_addr_src -{(Edge.Addr)}> eid) ∗
-        (* Addr *)
-        ([∗ set] eid_data_src ∈ reg_deps_data ∪ mem_deps_data, eid_data_src -{(Edge.Data)}> eid) ∗
-        (* There must be a write with same addr and val *)
-        (from_option (λ eid_coi_pred, ⌜EID.tid eid_coi_pred = tid⌝ ∗ eid_coi_pred -{(Edge.Co)}> eid) emp ot_coi_pred) ∗
-        (* Rmw *)
-        rmw_src -{(Edge.Rmw)}> eid)%I in
-    o_po_src -{LPo}> -∗
-    ([∗ set] e_po_src ∈ po_srcs, e_po_src -{Po}>) -∗
-    ctrl_srcs -{Ctrl}> -∗
-    last_local_write tid addr ot_coi_pred -∗
-    Some rmw_src -{Rmw}> -∗
-    ([∗ map] dr ↦ dv ∈ dep_regs_addr ∪ dep_regs_data, dr ↦ᵣ dv) -∗
-    (* node annotations *)
-    ([∗ map] node ↦ annot ∈ lob_annot, node ↦ₐ annot) -∗
-    (* Lob edge formers *)
-    (∀ eid,
-      (eid -{N}> (Edge.W kind_s kind_v) -∗
-     ([∗ set] eid_po_src ∈ po_srcs, eid_po_src -{(Edge.Po)}> eid) -∗
-     ([∗ set] eid_ctrl_src ∈ ctrl_srcs, eid_ctrl_src -{(Edge.Ctrl)}> eid) -∗
-     ([∗ set] eid_addr_src ∈ reg_deps_addr ∪ mem_deps_addr, eid_addr_src -{(Edge.Addr)}> eid) -∗
-     ([∗ set] eid_data_src ∈ reg_deps_data ∪ mem_deps_data, eid_data_src -{(Edge.Data)}> eid) -∗
-     rmw_src -{(Edge.Rmw)}> eid -∗
-     ([∗ set] eid_pre ∈ dom lob_annot, eid_pre -{Edge.Lob}> eid)) ∗
-    (* local resources that might flow into FE *)
-    R_loc_in ∗
-    (* FE, with excl invariant *)
-    (∃ eid_w R_in P,
-      (* excl invariant flows in *)
-        ∃ prot q Q,
-          (([∗ map] _ ↦ annot ∈ lob_annot, annot) -∗ Prot[addr, q | prot ] ∗ Q) ∗
-      (R_loc_in ∗ R_graph_facts eid ∗ Q ∗ Prot[addr, q | prot ] -∗
-       R_in ∗ eid_w -{Edge.Rf}> rmw_src ∗ ⌜EID.tid eid_w ≠ EID.tid rmw_src⌝ ∗ excl_inv eid_w P) ∗
-      (* FE *)
-      (R_in ∗ ▷ P eid_w ={⊤∖ ↑(excl_inv_name eid_w)}[∅]▷=∗ R ∗ (prot val eid)))) -∗
-    (* continuation *)
-    (
-      ∀ ts' : ThreadState.t,
-        "Hinterp" ∷ thread_local_interp ts' -∗
-        ⌜ts'.(ts_regs) !! RNPC = ts.(ts_regs) !! RNPC⌝ -∗
-        (* exists a bool (indicating if the (atomic) write succeeded) *)
-        (∃ b_succ,
-          ⌜ts'.(ts_reqs) = ctxt (inl (Some b_succ))⌝ ∗
-          ctrl_srcs -{Ctrl}> ∗
-          Some rmw_src -{Rmw}> ∗
-          if b_succ then
-            (* success *)
-            ∃ eid,
-              R_graph_facts eid ∗
-              (* R flowing in via lob *)
-              (eid ↦ₐ R) ∗
-              (Some eid) -{LPo}> ∗
-              (* local writes at addr is updated *)
-              last_local_write tid addr (Some eid)
-          else
-            (* failure, things stay unchanged *)
-            o_po_src -{LPo}> ∗
-            last_local_write tid addr ot_coi_pred ∗
-            ([∗ map] node ↦ annot ∈ lob_annot, node ↦ₐ annot) ∗
-            R_loc_in
-      ) -∗
-      WP LThreadState.LTSNormal ts' @ tid  {{ lts, to_lts_Phi Ψ lts }}
-    ) -∗
-    thread_local_interp ts -∗
-    WP LThreadState.LTSNormal ts @ tid {{ λ lts', to_lts_Phi Ψ lts' }}.
-  Proof.
-    iIntros (?? Hintersec ???????) "Hpo_src Hpo_srcs Hctrl Hlw Hrmw_src HDRs Hna Hef_fe".
-    iApply (mem_write_xcl_Some with "Hpo_src Hpo_srcs Hctrl Hlw Hrmw_src HDRs Hna [Hef_fe]");auto.
-    iIntros (?). iDestruct ("Hef_fe" $! eid) as "[$ [$ (%&%&%&Hfe)]]".
-    iDestruct "Hfe" as "(%&%&%&?&Hfe&Himpl)". iFrame.
-    iIntros "(R_loc_in & Hp & Q & #R_gr &Htok)".
-    iDestruct ("Hfe" with "[$R_loc_in $R_gr $Q $Hp]") as "(R_in & Ed_rf & Hext & Hinv)".
-    iDestruct (excl_inv_open_succ with "[$Htok $Ed_rf $Hinv $Hext]") as ">P". done.
-    { iDestruct "R_gr" as "(_&_&_&_&_&_&_&$)". }
-    rewrite later_sep. iDestruct "P" as "[P Hclo]".
-    iDestruct ("Himpl" with "[$R_in $P]") as ">R".
-    iModIntro. iNext. iMod "R". iMod "Hclo". by iFrame.
-  Qed.
+  (* Lemma mem_write_xcl_Some_inv {tid : Tid} {o_po_src ts ctxt addr kind_s kind_v val ot_coi_pred dep_addr dep_data rmw_src Ψ} R_loc_in R po_srcs ctrl_srcs lob_annot (dep_regs_addr: gmap _ _) dep_regs_data: *)
+  (*   ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemWrite 8 (writereq_of_store kind_v kind_s val addr (Some dep_addr) (Some dep_data))) ctxt -> *)
+  (*   kind_v = AV_exclusive -> *)
+  (*   dep_regs_addr ∩ dep_regs_data ⊆ dep_regs_data -> *)
+  (*   dom dep_regs_addr = list_to_set (AAInter.DepOn.regs dep_addr) -> *)
+  (*   let reg_deps_addr := map_fold (λ _ dv acc, reg_dep dv ∪ acc) ∅ dep_regs_addr in *)
+  (*   let mem_deps_addr := *)
+  (*     foldr (λ (idx : N) (acc : gset Eid), *)
+  (*              from_option (λ md : nat, {[{| EID.tid := tid; EID.iid := ts.(ts_iis).(iis_iid); EID.ieid := md |}]} ∪ acc) acc *)
+  (*                (ts.(ts_iis).(iis_mem_reads) !! idx)) ∅ (AAInter.DepOn.mem_reads dep_addr) in *)
+  (*   dom dep_regs_data = list_to_set (AAInter.DepOn.regs dep_data) -> *)
+  (*   let reg_deps_data := map_fold (λ _ dv acc, reg_dep dv ∪ acc) ∅ dep_regs_data in *)
+  (*   let mem_deps_data := *)
+  (*     foldr (λ (idx : N) (acc : gset Eid), *)
+  (*              from_option (λ md : nat, {[{| EID.tid := tid; EID.iid := ts.(ts_iis).(iis_iid); EID.ieid := md |}]} ∪ acc) acc *)
+  (*                (ts.(ts_iis).(iis_mem_reads) !! idx)) ∅ (AAInter.DepOn.mem_reads dep_data) in *)
+  (*   let R_graph_facts := (λ eid, *)
+  (*       eid -{E}> (Event.W kind_v kind_s addr val) ∗ *)
+  (*       ⌜(EID.tid eid) = tid ∧ (EID.iid eid) = ts.(ts_iis).(iis_iid)⌝ ∗ *)
+  (*       (* Po *) *)
+  (*       ([∗ set] eid_po_src ∈ po_srcs, eid_po_src -{(Edge.Po)}> eid) ∗ *)
+  (*       (* Ctrl *) *)
+  (*       ([∗ set] eid_ctrl_src ∈ ctrl_srcs, eid_ctrl_src -{(Edge.Ctrl)}> eid) ∗ *)
+  (*       (* Data *) *)
+  (*       ([∗ set] eid_addr_src ∈ reg_deps_addr ∪ mem_deps_addr, eid_addr_src -{(Edge.Addr)}> eid) ∗ *)
+  (*       (* Addr *) *)
+  (*       ([∗ set] eid_data_src ∈ reg_deps_data ∪ mem_deps_data, eid_data_src -{(Edge.Data)}> eid) ∗ *)
+  (*       (* There must be a write with same addr and val *) *)
+  (*       (from_option (λ eid_coi_pred, ⌜EID.tid eid_coi_pred = tid⌝ ∗ eid_coi_pred -{(Edge.Co)}> eid) emp ot_coi_pred) ∗ *)
+  (*       (* Rmw *) *)
+  (*       rmw_src -{(Edge.Lxsx)}> eid)%I in *)
+  (*   o_po_src -{LPo}> -∗ *)
+  (*   ([∗ set] e_po_src ∈ po_srcs, e_po_src -{Po}>) -∗ *)
+  (*   ctrl_srcs -{Ctrl}> -∗ *)
+  (*   last_local_write tid addr ot_coi_pred -∗ *)
+  (*   Some rmw_src -{Rmw}> -∗ *)
+  (*   ([∗ map] dr ↦ dv ∈ dep_regs_addr ∪ dep_regs_data, dr ↦ᵣ dv) -∗ *)
+  (*   (* node annotations *) *)
+  (*   ([∗ map] node ↦ annot ∈ lob_annot, node ↦ₐ annot) -∗ *)
+  (*   (* Lob edge formers *) *)
+  (*   (∀ eid, *)
+  (*     (eid -{N}> (Edge.W kind_v kind_s) -∗ *)
+  (*    ([∗ set] eid_po_src ∈ po_srcs, eid_po_src -{(Edge.Po)}> eid) -∗ *)
+  (*    ([∗ set] eid_ctrl_src ∈ ctrl_srcs, eid_ctrl_src -{(Edge.Ctrl)}> eid) -∗ *)
+  (*    ([∗ set] eid_addr_src ∈ reg_deps_addr ∪ mem_deps_addr, eid_addr_src -{(Edge.Addr)}> eid) -∗ *)
+  (*    ([∗ set] eid_data_src ∈ reg_deps_data ∪ mem_deps_data, eid_data_src -{(Edge.Data)}> eid) -∗ *)
+  (*    rmw_src -{(Edge.Lxsx)}> eid -∗ *)
+  (*    ([∗ set] eid_pre ∈ dom lob_annot, eid_pre -{Edge.Lob}> eid)) ∗ *)
+  (*   (* local resources that might flow into FE *) *)
+  (*   R_loc_in ∗ *)
+  (*   (* FE, with excl invariant *) *)
+  (*   (∃ eid_w R_in P, *)
+  (*     (* excl invariant flows in *) *)
+  (*       ∃ prot q Q, *)
+  (*         (([∗ map] _ ↦ annot ∈ lob_annot, annot) -∗ 『addr, q | prot』 ∗ Q) ∗ *)
+  (*     (R_loc_in ∗ R_graph_facts eid ∗ Q ∗ 『addr, q | prot』 -∗ *)
+  (*      R_in ∗ eid_w -{Edge.Rf}> rmw_src ∗ ⌜EID.tid eid_w ≠ EID.tid rmw_src⌝ ∗ excl_inv eid_w P) ∗ *)
+  (*     (* FE *) *)
+  (*     (R_in ∗ ▷ P eid_w ={⊤∖ ↑(excl_inv_name eid_w)}[∅]▷=∗ R ∗ (prot val eid)))) -∗ *)
+  (*   (* continuation *) *)
+  (*   ▷ ( *)
+  (*     ∀ ts' : ThreadState.t, *)
+  (*       "Hinterp" ∷ thread_local_interp ts' -∗ *)
+  (*       ⌜ts'.(ts_regs) !! RNPC = ts.(ts_regs) !! RNPC⌝ -∗ *)
+  (*       (* exists a bool (indicating if the (atomic) write succeeded) *) *)
+  (*       (∃ b_succ, *)
+  (*         ⌜ts'.(ts_reqs) = ctxt (inl b_succ)⌝ ∗ *)
+  (*         ctrl_srcs -{Ctrl}> ∗ *)
+  (*         Some rmw_src -{Rmw}> ∗ *)
+  (*         if b_succ then *)
+  (*           (* success *) *)
+  (*           ∃ eid, *)
+  (*             R_graph_facts eid ∗ *)
+  (*             (* R flowing in via lob *) *)
+  (*             (eid ↦ₐ R) ∗ *)
+  (*             (Some eid) -{LPo}> ∗ *)
+  (*             (* local writes at addr is updated *) *)
+  (*             last_local_write tid addr (Some eid) *)
+  (*         else *)
+  (*           (* failure, things stay unchanged *) *)
+  (*           o_po_src -{LPo}> ∗ *)
+  (*           last_local_write tid addr ot_coi_pred ∗ *)
+  (*           ([∗ map] node ↦ annot ∈ lob_annot, node ↦ₐ annot) ∗ *)
+  (*           R_loc_in *)
+  (*     ) -∗ *)
+  (*     WP LThreadState.LTSNormal ts' @ tid  {{ lts, to_lts_Phi Ψ lts }} *)
+  (*   ) -∗ *)
+  (*   thread_local_interp ts -∗ *)
+  (*   WP LThreadState.LTSNormal ts @ tid {{ λ lts', to_lts_Phi Ψ lts' }}. *)
+  (* Proof. *)
+  (*   iIntros (?? Hintersec ???????) "Hpo_src Hpo_srcs Hctrl Hlw Hrmw_src HDRs Hna Hef_fe". *)
+  (*   iApply (mem_write_xcl_Some with "Hpo_src Hpo_srcs Hctrl Hlw Hrmw_src HDRs Hna [Hef_fe]");auto. *)
+  (*   iIntros (?). iDestruct ("Hef_fe" $! eid) as "[$ [$ (%&%&%&Hfe)]]". *)
+  (*   iDestruct "Hfe" as "(%&%&%&?&Hfe&Himpl)". iFrame. *)
+  (*   iIntros "(R_loc_in & Hp & Q & #R_gr &Htok)". *)
+  (*   iDestruct ("Hfe" with "[$R_loc_in $R_gr $Q $Hp]") as "(R_in & Ed_rf & Hext & Hinv)". *)
+  (*   iDestruct (excl_inv_open_succ with "[$Htok $Ed_rf $Hinv $Hext]") as ">P". done. *)
+  (*   { iDestruct "R_gr" as "(_&_&_&_&_&_&_&$)". } *)
+  (*   rewrite later_sep. iDestruct "P" as "[P Hclo]". *)
+  (*   iDestruct ("Himpl" with "[$R_in $P]") as ">R". *)
+  (*   iModIntro. iNext. iMod "R". iMod "Hclo". by iFrame. *)
+  (* Qed. *)
 
 End rules.

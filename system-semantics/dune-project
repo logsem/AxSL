@@ -1,2 +1,3 @@
 (lang dune 3.9)
+(name coq-system-semantics)
 (using coq 0.8)

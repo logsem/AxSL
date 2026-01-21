@@ -1,38 +1,39 @@
-(*                                                                                  *)
-(*  BSD 2-Clause License                                                            *)
-(*                                                                                  *)
-(*  This applies to all files in this archive except folder                         *)
-(*  "system-semantics".                                                             *)
-(*                                                                                  *)
-(*  Copyright (c) 2023,                                                             *)
-(*     Zongyuan Liu                                                                 *)
-(*     Angus Hammond                                                                *)
-(*     Jean Pichon-Pharabod                                                         *)
-(*     Thibaut Pérami                                                               *)
-(*                                                                                  *)
-(*  All rights reserved.                                                            *)
-(*                                                                                  *)
-(*  Redistribution and use in source and binary forms, with or without              *)
-(*  modification, are permitted provided that the following conditions are met:     *)
-(*                                                                                  *)
-(*  1. Redistributions of source code must retain the above copyright notice, this  *)
-(*     list of conditions and the following disclaimer.                             *)
-(*                                                                                  *)
-(*  2. Redistributions in binary form must reproduce the above copyright notice,    *)
-(*     this list of conditions and the following disclaimer in the documentation    *)
-(*     and/or other materials provided with the distribution.                       *)
-(*                                                                                  *)
-(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"     *)
-(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE       *)
-(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE  *)
-(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE    *)
-(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL      *)
-(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR      *)
-(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER      *)
-(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,   *)
-(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE   *)
-(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
-(*                                                                                  *)
+(**************************************************************************************)
+(*  BSD 2-Clause License                                                              *)
+(*                                                                                    *)
+(*  This applies to all files in this archive except folder                           *)
+(*  "system-semantics".                                                               *)
+(*                                                                                    *)
+(*  Copyright (c) 2023,                                                               *)
+(*       Zongyuan Liu                                                                 *)
+(*       Angus Hammond                                                                *)
+(*       Jean Pichon-Pharabod                                                         *)
+(*       Thibaut Pérami                                                               *)
+(*                                                                                    *)
+(*  All rights reserved.                                                              *)
+(*                                                                                    *)
+(*  Redistribution and use in source and binary forms, with or without                *)
+(*  modification, are permitted provided that the following conditions are met:       *)
+(*                                                                                    *)
+(*  1. Redistributions of source code must retain the above copyright notice, this    *)
+(*     list of conditions and the following disclaimer.                               *)
+(*                                                                                    *)
+(*  2. Redistributions in binary form must reproduce the above copyright notice,      *)
+(*     this list of conditions and the following disclaimer in the documentation      *)
+(*     and/or other materials provided with the distribution.                         *)
+(*                                                                                    *)
+(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"       *)
+(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE         *)
+(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE    *)
+(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE      *)
+(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL        *)
+(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR        *)
+(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER        *)
+(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,     *)
+(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE     *)
+(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.              *)
+(*                                                                                    *)
+(**************************************************************************************)
 
 (** This file contains construction of basic RAs *)
 (* From stdpp Require Export namespaces. *)
@@ -162,26 +163,25 @@ Section definition.
   Qed.
 
   (** protocol *)
-  Definition prot_loc_gn_def (addr: Addr) (q: Qp) (N: gname) :=
-    ghost_map_elem AAProtN addr (DfracOwn q) N.
+  Definition prot_loc_gn_def (addr: Addr) (dq: dfrac) (N: gname) :=
+    ghost_map_elem AAProtN addr dq N.
 
   Definition prot_loc_gn_aux : seal (@prot_loc_gn_def). Proof. by eexists. Qed.
   Definition prot_loc_gn := prot_loc_gn_aux.(unseal).
   Definition prot_loc_gn_eq : @prot_loc_gn = @prot_loc_gn_def := prot_loc_gn_aux.(seal_eq).
 
-  Lemma prot_loc_gn_combine l q1 q2 N1 N2:
-    prot_loc_gn l q1 N1 -∗ prot_loc_gn l q2 N2 -∗ prot_loc_gn l (q1 + q2) N1.
+  Lemma prot_loc_gn_combine l dq1 dq2 N1 N2:
+    prot_loc_gn l dq1 N1 -∗ prot_loc_gn l dq2 N2 -∗ prot_loc_gn l (dq1 ⋅ dq2) N1.
   Proof.
     iIntros "H1 H2". rewrite prot_loc_gn_eq /prot_loc_gn_def.
     by iCombine "H1 H2" as "$".
   Qed.
 
   Lemma prot_loc_gn_split l q1 q2 N:
-    prot_loc_gn l (q1 + q2) N -∗ prot_loc_gn l q1 N ∗ prot_loc_gn l q2 N.
+    prot_loc_gn l (DfracOwn (q1 + q2)) N -∗ prot_loc_gn l (DfracOwn q1) N ∗ prot_loc_gn l (DfracOwn q2) N.
   Proof.
     iIntros "H". rewrite prot_loc_gn_eq /prot_loc_gn_def.
-    iDestruct "H" as "[H1 H2]".
-    iFrame.
+    iDestruct "H" as "[$ $]".
   Qed.
 
   Lemma prot_loc_gn_both_agree l q N m:
@@ -192,11 +192,19 @@ Section definition.
   Qed.
 
   Lemma prot_loc_gn_both_update l N N' m:
-    prot_loc_gn l 1 N -∗ ghost_map_auth AAProtN 1 m ==∗
-    ghost_map_auth AAProtN 1 (<[ l := N' ]>m) ∗ prot_loc_gn l 1 N'.
+    prot_loc_gn l (DfracOwn 1) N -∗ ghost_map_auth AAProtN 1 m ==∗
+    ghost_map_auth AAProtN 1 (<[ l := N' ]>m) ∗ prot_loc_gn l (DfracOwn 1) N'.
   Proof.
     iIntros "He Hauth". rewrite prot_loc_gn_eq /prot_loc_gn_def.
     by iDestruct (ghost_map.ghost_map_update with "Hauth He") as ">[$ $]".
+  Qed.
+
+  Lemma prot_loc_gn_persist l q N:
+    prot_loc_gn l (DfracOwn q) N ==∗ prot_loc_gn l (DfracDiscarded) N.
+  Proof.
+    iIntros "H". rewrite prot_loc_gn_eq /prot_loc_gn_def.
+    iApply ghost_map_elem_persist.
+    done.
   Qed.
 
 End definition.
@@ -228,16 +236,20 @@ Definition rmw_token_eq : @rmw_token = @rmw_token_def := rmw_token_aux.(seal_eq)
 Notation "Tok{ n }" := (rmw_token n) (at level 20,
                          format "'Tok{' n  '}'") : bi_scope.
 
-Definition prot_loc_def `{CMRA Σ} `{!AABaseG} (l: Addr) (q: Qp) (prot: Val -> Eid -> iProp Σ) : iProp Σ:=
+Definition prot_loc_def `{CMRA Σ} `{!AABaseG} (l: Addr) (q: dfrac) (prot: Val -> Eid -> iProp Σ) : iProp Σ:=
   ∃ gn, prot_loc_gn l q gn ∗ saved_prot_own gn prot.
 Definition prot_loc_aux : seal(@prot_loc_def). Proof. by eexists. Qed.
 Definition prot_loc := prot_loc_aux.(unseal).
 Arguments prot_loc {Σ _ _}.
 Definition prot_loc_eq : @prot_loc = @prot_loc_def := prot_loc_aux.(seal_eq).
-Notation "'Prot[' x , q | Φ ]" := (prot_loc x q Φ) (at level 20,
-                         format "'Prot['  x  ,  q  |  Φ  ]") : bi_scope.
-Notation "'Prot[' x | Φ ]" := (prot_loc x 1 Φ) (at level 20,
-                         format "'Prot['  x  |   Φ  ]") : bi_scope.
+Notation "『 x , dq | Φ 』" := (prot_loc x dq Φ) (at level 20,
+                         format "『 x ,  dq  |  Φ 』") : bi_scope.
+Notation "『 x , # q | Φ 』" := (prot_loc x (DfracOwn q) Φ) (at level 20,
+                         format "『 x ,  # q  |  Φ 』") : bi_scope.
+Notation "『 x | Φ 』" := (prot_loc x (DfracOwn 1) Φ) (at level 20,
+                         format "『 x  |  Φ 』") : bi_scope.
+Notation "『 x , □ | Φ 』" := (prot_loc x (DfracDiscarded) Φ) (at level 20,
+                         format "『 x ,  □ |  Φ 』") : bi_scope.
 
 Section lemma.
   Context `{CMRA Σ} `{!AABaseG}.
@@ -263,8 +275,8 @@ Section lemma.
   Qed.
 
   Lemma prot_loc_combine x q1 q2 Φ1 Φ2 :
-    Prot[ x, q1 | Φ1 ] -∗ Prot[ x, q2 | Φ2 ] -∗
-    Prot[ x, (q1+q2)%Qp | Φ1 ].
+    『 x , #q1 |  Φ1 』 -∗ 『 x, #q2 | Φ2  』-∗
+    『 x , #((q1+q2)%Qp) | Φ1 』.
   Proof.
     rewrite prot_loc_eq /prot_loc_def.
     iIntros "[% [Hgn1 Hsp1]] [% [Hgn2 Hsp2]]".
@@ -273,14 +285,14 @@ Section lemma.
   Qed.
 
   Global Instance prot_loc_combine_as l q1 q2 Φ1 Φ2:
-    CombineSepAs (Prot[ l, q1 | Φ1 ]) (Prot[ l, q2 | Φ2 ]) (Prot[ l , (q1 + q2) | Φ1 ]) | 60.
+    CombineSepAs (『 l , #q1 | Φ1 』) ( 『l , #q2 | Φ2 』) (『 l, #(q1 + q2) | Φ1 』) | 60.
   Proof.
     rewrite /CombineSepAs. iIntros "[H1 H2]".
     iDestruct (prot_loc_combine with "H1 H2") as "$".
   Qed.
 
   Global Instance prot_loc_fractional l Φ :
-    Fractional (λ q, Prot[ l, q | Φ ])%I.
+    Fractional (λ q, 『l, #q | Φ 』)%I.
   Proof.
     iIntros (??). iSplit.
     {
@@ -294,10 +306,27 @@ Section lemma.
 
 
   Global Instance prot_loc_as_fractional l q Φ :
-    AsFractional (Prot[ l, q | Φ ]) (λ q, Prot[ l, q | Φ ])%I q.
+    AsFractional (『 l, #q | Φ 』) (λ q, 『 l, #q |  Φ 』)%I q.
   Proof.
       split. reflexivity.
       apply _.
+  Qed.
+
+  Lemma prot_loc_persist l q Φ:
+    『 l , #q | Φ 』 ==∗ 『 l , □ | Φ 』.
+  Proof.
+    rewrite prot_loc_eq /prot_loc_def.
+    iIntros "[% [H $]]".
+    by iApply prot_loc_gn_persist.
+  Qed.
+
+
+  Global Instance prot_loc_pers l Φ:
+   Persistent (『 l , □ | Φ 』).
+  Proof.
+    rewrite prot_loc_eq /prot_loc_def.
+    rewrite prot_loc_gn_eq.
+    apply _.
   Qed.
 
 End lemma.

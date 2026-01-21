@@ -1,38 +1,39 @@
-(*                                                                                  *)
-(*  BSD 2-Clause License                                                            *)
-(*                                                                                  *)
-(*  This applies to all files in this archive except folder                         *)
-(*  "system-semantics".                                                             *)
-(*                                                                                  *)
-(*  Copyright (c) 2023,                                                             *)
-(*     Zongyuan Liu                                                                 *)
-(*     Angus Hammond                                                                *)
-(*     Jean Pichon-Pharabod                                                         *)
-(*     Thibaut Pérami                                                               *)
-(*                                                                                  *)
-(*  All rights reserved.                                                            *)
-(*                                                                                  *)
-(*  Redistribution and use in source and binary forms, with or without              *)
-(*  modification, are permitted provided that the following conditions are met:     *)
-(*                                                                                  *)
-(*  1. Redistributions of source code must retain the above copyright notice, this  *)
-(*     list of conditions and the following disclaimer.                             *)
-(*                                                                                  *)
-(*  2. Redistributions in binary form must reproduce the above copyright notice,    *)
-(*     this list of conditions and the following disclaimer in the documentation    *)
-(*     and/or other materials provided with the distribution.                       *)
-(*                                                                                  *)
-(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"     *)
-(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE       *)
-(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE  *)
-(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE    *)
-(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL      *)
-(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR      *)
-(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER      *)
-(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,   *)
-(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE   *)
-(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
-(*                                                                                  *)
+(**************************************************************************************)
+(*  BSD 2-Clause License                                                              *)
+(*                                                                                    *)
+(*  This applies to all files in this archive except folder                           *)
+(*  "system-semantics".                                                               *)
+(*                                                                                    *)
+(*  Copyright (c) 2023,                                                               *)
+(*       Zongyuan Liu                                                                 *)
+(*       Angus Hammond                                                                *)
+(*       Jean Pichon-Pharabod                                                         *)
+(*       Thibaut Pérami                                                               *)
+(*                                                                                    *)
+(*  All rights reserved.                                                              *)
+(*                                                                                    *)
+(*  Redistribution and use in source and binary forms, with or without                *)
+(*  modification, are permitted provided that the following conditions are met:       *)
+(*                                                                                    *)
+(*  1. Redistributions of source code must retain the above copyright notice, this    *)
+(*     list of conditions and the following disclaimer.                               *)
+(*                                                                                    *)
+(*  2. Redistributions in binary form must reproduce the above copyright notice,      *)
+(*     this list of conditions and the following disclaimer in the documentation      *)
+(*     and/or other materials provided with the distribution.                         *)
+(*                                                                                    *)
+(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"       *)
+(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE         *)
+(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE    *)
+(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE      *)
+(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL        *)
+(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR        *)
+(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER        *)
+(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,     *)
+(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE     *)
+(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.              *)
+(*                                                                                    *)
+(**************************************************************************************)
 
 From iris.proofmode Require Import tactics.
 
@@ -72,7 +73,7 @@ Section lifting.
   Lemma sswp_step gs tid s s' pg ls Φ :
     let gr := gs.(GlobalState.gs_graph) in
     AAConsistent.t gr ->
-    AACandExec.NMSWF.wf gr ->
+    AACand.NMSWF.wf gr ->
     LThreadStep.t gs tid s s' →
     LThreadState.at_progress s pg ->
     local_interp gs tid pg ls -∗
@@ -83,7 +84,8 @@ Section lifting.
         ∀ (na : mea Σ) (ea : sra Σ),
         "#Hannot_at_prog" ∷ na_at_progress gr tid pg na ∗
         "Hea_wf" ∷ ea_local_wf gr ea na ∗
-        ("Hinterp_annot" ∷ annot_interp na) ==∗
+        "Hinterp_annot" ∷ annot_interp na -∗
+        |==> ▷ |==>
         let s_lob := (Graph.lob_pred_of gr e) in
         ∃ (R: iProp Σ) (na_used na_unused : mea Σ) (ls' : log_ts_t),
           "#Hna_split" ∷ na_splitting_wf s_lob na na_used na_unused ∗
@@ -92,16 +94,29 @@ Section lifting.
           "Hinterp_local" ∷  local_interp gs tid (LThreadState.get_progress s') ls' ∗
           "Hwp" ∷ Φ s'
     else
-      |=i=> ("Hinterp_local" ∷  local_interp gs tid (LThreadState.get_progress s') ls ∗
-            "Hwp" ∷ Φ s').
+        ∀ (na : mea Σ) ,
+        "Hinterp_annot" ∷ annot_interp na -∗
+        |==> ▷ |==>
+          ("Hinterp_annot" ∷ annot_interp na ∗
+           "Hinterp_local" ∷  local_interp gs tid (LThreadState.get_progress s') ls ∗
+           "Hwp" ∷ Φ s').
   Proof.
     iIntros (? Hgr_consist Hgr_wf Hstep Hpg) "Hls Hgs H". rewrite sswp_eq /sswp_def.
     rewrite (LThreadStep.step_not_terminated gs tid s s');[|assumption].
+
     iDestruct ("H" $! gs pg s' ls with "[$Hgs $Hls]") as "H". iPureIntro. repeat (split;try assumption).
     rewrite /gr.
-    case_bool_decide as Hv;[|iFrame].
+    case_bool_decide as Hv.
+    2:{
+      iIntros (?) "H'". iNamed "H'".
+      iDestruct ("H" $! na with "Hinterp_annot") as ">H".
+      iModIntro. iNext. iMod "H" as "(?&?&?)".
+      by iFrame.
+    }
     iIntros (??) "H'". iNamed "H'".
-    iMod ("H" $! na with "[$Hinterp_annot $Hannot_at_prog]") as "(%&%&%&%&#Hna_split&FE&?&?&?)".
+    iDestruct ("H" $! na with "[$Hinterp_annot $Hannot_at_prog]") as ">H".
+    iModIntro. iNext. iMod "H" as "(%&%&%&%&#Hna_split&FE&?&?&?)".
+    (* iMod ("H" $! na with "[$Hinterp_annot $Hannot_at_prog]") as ">(%&%&%&%&#Hna_split&FE&?&?&?)". *)
     iModIntro. iExists R, na_used, na_unused, ls'. iFrame "Hna_split". iFrame.
     iNamed "Hna_split". iNamed "Hea_wf". iDestruct "Hannot_at_prog" as %Hna_dom_eq.
     rewrite /ea_local_wf.
@@ -377,7 +392,7 @@ Section lifting.
   Lemma wp_step gs tid s s' pg ls Φ :
     let gr := gs.(GlobalState.gs_graph) in
     AAConsistent.t gr ->
-    AACandExec.NMSWF.wf gr ->
+    AACand.NMSWF.wf gr ->
     LThreadStep.t gs tid s s' →
     LThreadState.at_progress s pg ->
     local_interp gs tid pg ls -∗
@@ -388,7 +403,8 @@ Section lifting.
         ∀ (na : mea Σ) (ea : sra Σ),
         "#Hannot_at_prog" ∷ na_at_progress gr tid pg na ∗
         "Hea_wf" ∷ ea_local_wf gr ea na ∗
-        "Hinterp_annot" ∷ annot_interp na ==∗
+        "Hinterp_annot" ∷ annot_interp na -∗
+        |==> ▷ |==>
         let s_lob := (Graph.lob_pred_of gr e) in
         ∃ (R: iProp Σ) (na_used na_unused : mea Σ) (ls' : log_ts_t),
           "#Hna_split" ∷ na_splitting_wf s_lob na na_used na_unused ∗
@@ -397,17 +413,31 @@ Section lifting.
           "Hinterp_local" ∷  local_interp gs tid (LThreadState.get_progress s') ls' ∗
           "Hwp" ∷ WP s' @ tid {{ Φ }}
     else
-      |=i=> ("Hinterp_local" ∷  local_interp gs tid (LThreadState.get_progress s') ls ∗
+        ∀ (na : mea Σ) ,
+        "Hinterp_annot" ∷ annot_interp na -∗
+        |==> ▷ |==>
+          ("Hinterp_annot" ∷ annot_interp na ∗
+             "Hinterp_local" ∷  local_interp gs tid (LThreadState.get_progress s') ls ∗
             "Hwp" ∷ WP s' @ tid {{ Φ }}).
   Proof.
     iIntros (? Hgr_consist Hgr_wf Hstep Hpg) "Hls Hgs H".
     rewrite wp_sswp. iApply (sswp_step with "Hls Hgs H");assumption.
   Qed.
 
+  Lemma step_bupdN_mono n P Q:
+    (P -∗ Q) ⊢ (Nat.iter n (λ P, |==> ▷ |==> P) P) -∗ Nat.iter n (λ P, |==> ▷ |==> P) Q.
+  Proof.
+    iIntros "Himp P".
+    iInduction n as [|] "IH" . by iApply "Himp".
+    rewrite 2!Nat.iter_succ.
+    iMod "P". iModIntro. iNext. iMod "P". iModIntro.
+    iApply ("IH" with "Himp"). done.
+  Qed.
+
   Lemma wp_steps (n : nat) gs (tid : Tid) s pg s' ls Φ :
     let gr := gs.(GlobalState.gs_graph) in
     AAConsistent.t gr ->
-    AACandExec.NMSWF.wf gr ->
+    AACand.NMSWF.wf gr ->
     nsteps (LThreadStep.t gs tid) n s s' →
     Terminated s' →
     LThreadState.at_progress s pg ->
@@ -417,20 +447,21 @@ Section lifting.
     ∀ (na : mea Σ) (ea : sra Σ),
     "#Hannot_at_prog" ∷ na_at_progress gr tid pg na ∗
     "Hea_wf" ∷ ea_local_wf gr ea na ∗
-    ("Hinterp_annot" ∷ annot_interp na) ==∗
-    ∃ na' ea' ls',
+    ("Hinterp_annot" ∷ annot_interp na) -∗
+    Nat.iter n (λ P, |==> ▷ |==> P)
+    (∃ na' ea' ls',
       annot_interp na' ∗
       ea_local_wf gr ea' na' ∗
       "Hinterp_local" ∷ local_interp gs tid (LThreadState.get_progress s') ls' ∗
       (* FEs hold for nodes in the middle, [s,s') *)
       ⌜LThreadStep.eids_between gr tid s s' ∪ dom na = dom na'⌝ ∗
-      post_lifting Φ tid s'.
+      post_lifting Φ tid s').
   Proof.
     revert s s' pg ls Φ.
     induction n as [|n IH]=> s s' pg ls Φ /=.
     {
       inversion_clear 3. intros Hterm Hpg.
-      iIntros "? ? WP". iIntros (??) "H". iModIntro.
+      iIntros "? ? WP". iIntros (??) "H".
       iExists na,ea,ls. rewrite Hpg /=. iNamed "H". iFrame.
       rewrite LThreadStep.traversed_eids_empty.
       iSplit;first (iPureIntro;set_solver+).
@@ -447,7 +478,8 @@ Section lifting.
     case_bool_decide as Hv.
     (* case_bool_decide as Hpg_valid. *)
     { (* Case valid: update [na] *)
-      iMod ("Step" $! na ea with "[$Hannot_at_prog $Hea_wf $Hinterp_annot]") as "(%&%&%&%&H)".
+      iMod ("Step" $! na ea with "[$Hannot_at_prog $Hea_wf $Hinterp_annot]") as "Step".
+      iModIntro. iNext. iMod "Step" as "(%&%&%&%&H)".
       iNamed "H". iNamed "Hna_split".
       iDestruct "Hannot_at_prog" as %Hannot_at_prog.
       iDestruct (big_sepM2_alt with "Hnau_wf") as "[%Hnauu_dom _]".
@@ -466,7 +498,7 @@ Section lifting.
       specialize (IH s'' s' (LThreadState.get_progress s'') ls' Φ Hgr_cs Hgr_wf Hsteps' Hterm).
       iDestruct (IH with "Hinterp_local Hgs Hwp") as "IH";first done.
       iSpecialize ("IH" $! ({[ThreadState.progress_to_node pg tid := R]} ∪ na_unused ∪ na) ({[ThreadState.progress_to_node pg tid := na_used]} ∪ ea)).
-      iMod ("IH" with "[$Hea_wf $Hinterp_annot]") as "(%&%&%ls''&Hinterp_annot&Hea_wf&Hls&Hdom&Hpost)".
+      iDestruct ("IH" with "[$Hea_wf $Hinterp_annot]") as "IH".
       {
         iPureIntro.
         rewrite -assoc. rewrite dom_union_L dom_singleton_L. rewrite filter_union_L filter_singleton_L;last reflexivity.
@@ -474,19 +506,25 @@ Section lifting.
         rewrite (LThreadStep.step_traversed_eids_from_init_union s s'' Hstep).
         case_bool_decide;subst pg. reflexivity. contradiction.
       }
-      iModIntro. iExists na',ea', ls''. iFrame.
+
+      iModIntro.
+      iApply (step_bupdN_mono with "[] IH").
+      iIntros "(%&%&%ls''&Hinterp_annot&Hea_wf&Hls&Hdom&Hpost)".
+      iExists na',ea', ls''. iFrame.
       rewrite -assoc. rewrite dom_union_L. rewrite dom_singleton_L.
       rewrite Hnau_dom_eq. iDestruct "Hdom" as %Hdom.
       iPureIntro. subst pg. case_bool_decide;last contradiction. set_solver + Hdom.
     }
     { (* Case invalid: keep [na] unchanged *)
       specialize (IH s'' s' (LThreadState.get_progress s'') ls Φ Hgr_cs Hgr_wf Hsteps' Hterm).
-      rewrite {1}interp_mod_eq /interp_mod_def.
-      iMod ("Step" with "Hinterp_annot") as "[Hwp Hinterp_annot]".
-      iNamed "Hwp". rewrite /=.
+      (* rewrite {1}interp_mod_eq /interp_mod_def. *)
+      iMod ("Step" with "Hinterp_annot") as "Step".
+      iModIntro. iNext. iMod "Step" as "[Hinterp_annot Hwp]".
+      iNamed "Hwp".
       iDestruct (IH with "Hinterp_local Hgs Hwp") as "IH";first done.
+      iModIntro.
 
-      iMod ("IH" with "[$Hea_wf $Hinterp_annot]").
+      iDestruct ("IH" with "[$Hea_wf $Hinterp_annot]") as "IH".
       {
         iDestruct "Hannot_at_prog" as %Hannot_at_prog. iPureIntro.
         rewrite Hannot_at_prog.
@@ -496,8 +534,11 @@ Section lifting.
         case_bool_decide; first contradiction.
         rewrite union_empty_l_L. reflexivity.
       }
+
+      iApply (step_bupdN_mono with "[] IH").
+      iIntros "(%&%&%&?&?&?&?&?)".
       subst pg;case_bool_decide;first contradiction.
-      rewrite union_empty_l_L. iFrame. clear;done.
+      rewrite union_empty_l_L. iFrame.
     }
   Qed.
 

@@ -1,38 +1,39 @@
-(*                                                                                  *)
-(*  BSD 2-Clause License                                                            *)
-(*                                                                                  *)
-(*  This applies to all files in this archive except folder                         *)
-(*  "system-semantics".                                                             *)
-(*                                                                                  *)
-(*  Copyright (c) 2023,                                                             *)
-(*     Zongyuan Liu                                                                 *)
-(*     Angus Hammond                                                                *)
-(*     Jean Pichon-Pharabod                                                         *)
-(*     Thibaut Pérami                                                               *)
-(*                                                                                  *)
-(*  All rights reserved.                                                            *)
-(*                                                                                  *)
-(*  Redistribution and use in source and binary forms, with or without              *)
-(*  modification, are permitted provided that the following conditions are met:     *)
-(*                                                                                  *)
-(*  1. Redistributions of source code must retain the above copyright notice, this  *)
-(*     list of conditions and the following disclaimer.                             *)
-(*                                                                                  *)
-(*  2. Redistributions in binary form must reproduce the above copyright notice,    *)
-(*     this list of conditions and the following disclaimer in the documentation    *)
-(*     and/or other materials provided with the distribution.                       *)
-(*                                                                                  *)
-(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"     *)
-(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE       *)
-(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE  *)
-(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE    *)
-(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL      *)
-(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR      *)
-(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER      *)
-(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,   *)
-(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE   *)
-(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
-(*                                                                                  *)
+(**************************************************************************************)
+(*  BSD 2-Clause License                                                              *)
+(*                                                                                    *)
+(*  This applies to all files in this archive except folder                           *)
+(*  "system-semantics".                                                               *)
+(*                                                                                    *)
+(*  Copyright (c) 2023,                                                               *)
+(*       Zongyuan Liu                                                                 *)
+(*       Angus Hammond                                                                *)
+(*       Jean Pichon-Pharabod                                                         *)
+(*       Thibaut Pérami                                                               *)
+(*                                                                                    *)
+(*  All rights reserved.                                                              *)
+(*                                                                                    *)
+(*  Redistribution and use in source and binary forms, with or without                *)
+(*  modification, are permitted provided that the following conditions are met:       *)
+(*                                                                                    *)
+(*  1. Redistributions of source code must retain the above copyright notice, this    *)
+(*     list of conditions and the following disclaimer.                               *)
+(*                                                                                    *)
+(*  2. Redistributions in binary form must reproduce the above copyright notice,      *)
+(*     this list of conditions and the following disclaimer in the documentation      *)
+(*     and/or other materials provided with the distribution.                         *)
+(*                                                                                    *)
+(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"       *)
+(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE         *)
+(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE    *)
+(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE      *)
+(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL        *)
+(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR        *)
+(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER        *)
+(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,     *)
+(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE     *)
+(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.              *)
+(*                                                                                    *)
+(**************************************************************************************)
 
 (* This file contains the low-level proof rules for memory reads *)
 From self.low.rules Require Import prelude.
@@ -42,96 +43,105 @@ Import uPred.
 Section rules.
   Context `{AAIrisG} `{Htg: !ThreadGNL}.
   Import ThreadState.
+  Import AACand.
 
   Lemma mem_read_external {tid : Tid} {o_po_src ts ctxt dep addr kind_s kind_v} R po_srcs lob_annot:
-    ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemRead 8 (readreq_of_store kind_s kind_v addr dep)) ctxt ->
+    ThreadState.ts_reqs ts = AAInter.Next (AAInter.MemRead 8 (readreq_of_load kind_v kind_s addr dep)) ctxt ->
     let eid := progress_to_node (get_progress ts) tid in
     let R_graph_facts := (λ val eid_w,
-                            eid -{E}> (Event.R kind_s kind_v addr val) ∗
+                            eid -{E}> (Event.R kind_v kind_s addr val) ∗
                             (* Po *)
                             ([∗ set] eid_po_src ∈ po_srcs, eid_po_src -{(Edge.Po)}> eid) ∗
                             (* Ctrl *)
                             ([∗ set] eid_ctrl_src ∈ ts.(ts_ctrl_srcs), eid_ctrl_src -{(Edge.Ctrl)}> eid) ∗
                             (* Addr *)
-                            ([∗ set] eid_addr_src ∈ LThreadStep.deps_of_depon tid ts (Some dep), eid_addr_src -{(Edge.Addr)}> eid) ∗
+                            ([∗ set] eid_addr_src ∈ LThreadStep.deps_of_depon tid ts dep, eid_addr_src -{(Edge.Addr)}> eid) ∗
                             (* There must be a write with same addr and val *)
                             (∃ kind_s_w kind_v_w, eid_w -{E}> (Event.W kind_s_w kind_v_w addr val)) ∗
                             (* [optional] rf from write to read *)
                             eid_w -{(Edge.Rf)}> eid ∗
                             (* eid_w is an external write *)
                             ⌜EID.tid eid_w ≠ tid⌝)%I in
-    o_po_src -{LPo}> -∗
-    ([∗ set] e_po_src ∈ po_srcs, e_po_src -{Po}>) -∗
-    last_local_write tid addr None -∗
+    {SS{{
+    o_po_src -{LPo}> ∗
+    ([∗ set] e_po_src ∈ po_srcs, e_po_src -{Po}>) ∗
+    last_local_write tid addr None ∗
     (* node annotations *)
-    ([∗ map] node ↦ annot ∈ lob_annot, node ↦ₐ annot) -∗
+    ([∗ map] node ↦ annot ∈ lob_annot, node ↦ₐ annot) ∗
     (* Lob edge formers *)
-    (eid -{N}> (Edge.R kind_s kind_v) -∗
+    (eid -{N}> (Edge.R kind_v kind_s) -∗
      ([∗ set] eid_po_src ∈ po_srcs, eid_po_src -{Edge.Po}> eid) -∗
      ([∗ set] eid_ctrl_src ∈ ts.(ts_ctrl_srcs), eid_ctrl_src -{(Edge.Ctrl)}> eid) -∗
-     ([∗ set] eid_addr_src ∈ LThreadStep.deps_of_depon tid ts (Some dep), eid_addr_src -{(Edge.Addr)}> eid) -∗
-     [∗ set] eid_pre ∈ dom lob_annot, eid_pre -{Edge.Lob}> eid) -∗
+     ([∗ set] eid_addr_src ∈ LThreadStep.deps_of_depon tid ts dep, eid_addr_src -{(Edge.Addr)}> eid) -∗
+     [∗ set] eid_pre ∈ dom lob_annot, eid_pre -{Edge.Lob}> eid) ∗
     (* FE *)
     (∃ prot q Q,
        (([∗ map] _ ↦ annot ∈ lob_annot, annot) -∗
-       Prot[addr, q | prot ] ∗ Q) ∗
+       『addr, q | prot 』 ∗ Q) ∗
        ∀ val eid_w,
-       Prot[addr, q | prot ] ∗ Q ∗
+       『 addr, q | prot 』 ∗ Q ∗
        R_graph_facts val eid_w ∗
        ▷(prot val eid_w)
        ={⊤}[∅]▷=∗
-       R addr val eid_w ∗ (prot val eid_w)) -∗
-    SSWP (LThreadState.LTSNormal ts) @ tid {{ λ lts',
-      (* exists a val, a write kind, and a write eid_w *)
-      ∃ val eid_w,
-      (* update lts' accordingly *)
-      ⌜lts' = LThreadState.LTSNormal ((ThreadState.incr_cntr (ts <| ts_iis := (ts.(ts_iis)
+       R addr val eid_w ∗ (prot val eid_w))
+    }}}
+    (LThreadState.LTSNormal ts) @ tid
+    {{{val eid_w, RET LThreadState.LTSNormal ((ThreadState.incr_cntr (ts <| ts_iis := (ts.(ts_iis)
                                     <| iis_mem_reads := ((ts.(ts_iis).(iis_mem_reads)) ++ [ts.(ts_iis).(iis_cntr)])%list|>)|>))
                                     <| ts_reqs := ctxt (inl(val, None)) |>
-                                    <| ts_rmw_pred := if bool_decide (kind_v = AV_exclusive) ||
-                                                           bool_decide (kind_v = AV_atomic_rmw)
-                                                      then Some eid else ts.(ts_rmw_pred) |>)⌝ ∗
+                                    <| ts_rmw_pred := if bool_decide (kind_v = AV_exclusive) then Some eid else ts.(ts_rmw_pred) |>);
+      (* exists a val, a write kind, and a write eid_w *)
+      (* ∃ val eid_w, *)
+      (* update lts' accordingly *)
+      (* ⌜lts' = ⌝ ∗ *)
       R_graph_facts val eid_w ∗
       (Some eid) -{LPo}> ∗
       (* node annotation *)
       (eid ↦ₐ R addr val eid_w) ∗
       (* local writes at addr is unchanged *)
       last_local_write tid addr None
-    }}.
+    }}}.
   Proof.
-    iIntros (Hreqs ??) "Hpo_src Hpo_srcs Hlocal Hannot Hef Hfe".
+    iIntros (Hreqs ??).
+    iIntros (Φ) "(Hpo_src & Hpo_srcs & Hlocal & Hannot & Hef & Hfe) HΦ".
     rewrite sswp_eq /sswp_def /=.
     iIntros (????) "H". iNamed "H".
     inversion Hat_prog as [Hpg]. clear Hat_prog.
 
+    subst eid.
     inversion_step Hstep.
     (* Hstep gives that a read event is happening *)
     (* go to valid case *)
-    unfold eid0 in Hgr_lk.
-    rewrite -(progress_to_node_mk_eid_ii _ _ (get_progress ts)) in Hgr_lk;last done.
-    case_bool_decide as Hv.
+    (* rewrite -(progress_to_node_mk_eid_ii _ _ (get_progress ts)) in Hgr_lk;last done. *)
+
+    destruct (bool_decide (progress_is_valid (GlobalState.gs_graph gs) tid (get_progress ts))) eqn: Hv.
     2:{
+      rewrite bool_decide_eq_false in Hv.
       rewrite (LThreadStep.step_progress_valid_is_reqs_nonempty _ _ _ ts) in Hv; [|reflexivity|eassumption].
       rewrite Hreqs /EmptyInterp /= in Hv. exfalso. apply Hv. congruence.
     }
 
+    rewrite bool_decide_eq_true in Hv.
+
     iIntros (?). iNamed 1.
+    inversion H2. subst sz. cdestruct H7, H8. subst.
 
     (* get the write *)
-    opose proof* (Graph.wf_read_inv _ _ _ addr kind_s kind_v mv Hgraph_wf Hgr_lk) as Hrf;simpl;
-      [rewrite /AACandExec.Candidate.kind_of_rreq_P /=; repeat (case_bool_decide;[|contradiction])
-      ;clear;done| destruct Hrf as (eid_w & kind_s_w & kind_v_w & E_w &Hgr_lk_w&HE_w&Hrf)].
+    opose proof* (Graph.wf_read_inv _ _ _ addr mv Hgraph_wf Hgr_lk) as Hrf;simpl. done.
+    subst req.  done. done.
+    cdestruct Hrf as eid_w ? ? ? Hlk_w ? ? Hrf. subst.
 
     iNamed "Hinterp_local".
     iDestruct (last_write_interp_agree_None with "Hinterp_local_lws Hlocal") as %Hlw.
-    ospecialize* Hlw; [eassumption|clear -HE_w;eauto |]. eapply AAConsistent.event_is_write_with_impl_addr;done.
+    ospecialize* Hlw. eassumption. eapply AAConsistent.mem_wf_spec_write.
+    rewrite /NMSWF.wf in Hgraph_wf. naive_solver.
+    eassumption. done. done.
 
     iDestruct (po_pred_interp_agree_big' with "Hinterp_po_src Hpo_srcs") as %Hpo_srcs.
     iDestruct (po_pred_interp_agree with "Hinterp_po_src Hpo_src") as %Hpo.
 
-    epose proof (AAConsistent.event_is_write_with_elem_of_mem_writes eid_w _ _ _ _ _ Hgr_lk_w HE_w) as Heid_w.
+    (* epose proof (AAConsistent.event_is_write_with_elem_of_mem_writes eid_w _ _ _ _ _ Hgr_lk_w HE_w) as Heid_w. *)
 
-    subst eid. set (eid := (mk_eid_ii ts tid)).
     destruct Hlw as [Hne_tid | [Htid Hlw]].
     2:{(* reading from later writes *)
       exfalso.
@@ -142,21 +152,22 @@ Section rules.
       rewrite /eid. by apply progress_le_gt_False in Hlw.
     }
 
-    assert (Hrfe : (eid_w, eid) ∈ AACandExec.Candidate.external_of (gs.(GlobalState.gs_graph).(AACandExec.Candidate.rf))).
+    assert (Hrfe : (eid_w, eid) ∈ Candidate.external_of (gs.(GlobalState.gs_graph).(Candidate.rf))).
     { set_solver + Hrf Hne_tid. }
 
+    set (addr:= AAInter.WriteReq.pa x2).
+
     (** allocate resources *)
-    iAssert (eid -{E}> Event.R kind_s kind_v addr mv ∗
+    iAssert (eid -{E}> Event.R kind_v kind_s addr mv ∗
              ([∗ set] eid_po_src ∈ po_srcs, eid_po_src -{Edge.Po}> progress_to_node (get_progress ts) tid) ∗
              ([∗ set] eid_ctrl_src ∈ ts_ctrl_srcs ts, eid_ctrl_src -{Edge.Ctrl}> eid) ∗
-             ([∗ set] eid_addr_src ∈ LThreadStep.deps_of_depon tid ts (Some dep), eid_addr_src -{(Edge.Addr)}> eid) ∗
-             eid_w -{E}> Event.W kind_s_w kind_v_w addr mv ∗
+             ([∗ set] eid_addr_src ∈ LThreadStep.deps_of_depon tid ts dep, eid_addr_src -{(Edge.Addr)}> eid) ∗
+             (∃ kind_v_w kind_s_w, eid_w -{E}> Event.W kind_v_w kind_s_w addr mv) ∗
              eid_w -{Edge.Rf}> eid)%I as "(E_R & Ed_po & Ed_ctrl & Ed_addr & E_W & Ed_rf)".
     {
       rewrite edge_eq /edge_def. rewrite event_eq /event_def. iNamed "Hinterp_global".
 
-      iSplitL. alloc_graph_res.
-      { rewrite /AACandExec.Candidate.kind_of_rreq_P /=; repeat case_bool_decide;try contradiction;clear;auto. }
+      iSplitL. alloc_graph_res. done.
 
       iSplitL. rewrite big_sepS_forall. iIntros (??). alloc_graph_res.
       destruct (Hpo_srcs x) as [? [? ?]]; try assumption. rewrite -(progress_to_node_of_node tid x);try assumption.
@@ -166,7 +177,34 @@ Section rules.
 
       iSplitL. rewrite big_sepS_forall. iIntros (??). alloc_graph_res.
 
-      iSplitL;alloc_graph_res;done.
+      assert (x3 = inl true ∧ exists kv ks, AAInter.WriteReq.access_kind x2 = access_kind_of_AK kv ks) as [-> (?&?&?)].
+      {
+        (* TODO: make a lemma in mm.v *)
+        assert (NMSWF.mem_wf (GlobalState.gs_graph gs)) as Hmem_wf. unfold NMSWF.wf in Hgraph_wf. naive_solver.
+        destruct Hmem_wf as [_ Hmem_wf].
+        ospecialize * (Hmem_wf eid_w).
+        clear -Hlk_w. set_unfold. naive_solver.
+        set_unfold in Hmem_wf.
+        cdestruct Hmem_wf.
+        rewrite H1 in Hlk_w. inversion Hlk_w. subst. cdestruct H11. rewrite H11.
+        unfold Candidate.mem_explicit in H6. unfold Candidate.mem_by_kind in H6.
+        set_unfold in H6. cdestruct H6.
+        rewrite H6 in H1. inversion H1. subst.
+        cbn in H8.
+        destruct (Arm.Interface.WriteReq.access_kind x4); try contradiction.
+        split;first done.
+
+        exists e.(Explicit_access_kind_variety), e.(Explicit_access_kind_strength).
+        simpl. unfold access_kind_of_AK. simpl. clear. destruct e. done.
+      }
+
+      iSplitL;alloc_graph_res;try eassumption.
+      split; first eassumption.
+      unfold Event.event_interp.
+      eexists.
+      split;first eassumption.
+      simpl. rewrite H1. rewrite H7.
+      repeat split;reflexivity.
     }
 
     (** get lob *)
@@ -191,16 +229,20 @@ Section rules.
     iDestruct (annot_detach_big with "Hinterp_annot Hannot") as ">(%lob_annot_uu&%Hannot_dom & Hinterp_annot & #Hannot_split)".
 
     iMod (po_pred_interp_update _ ts ((ts <| ts_iis := ts_iis ts <| iis_mem_reads := (iis_mem_reads (ts_iis ts) ++ [iis_cntr (ts_iis ts)])%list |> |>)
-                                          <| ts_reqs := ctxt (inl (mv, None)) |>
-                                          <| ts_rmw_pred := if bool_decide (kind_v = AV_exclusive) ||
-                                                           bool_decide (kind_v = AV_atomic_rmw) then Some eid else ts.(ts_rmw_pred) |>
+                                          <| ts_reqs := ctxt0 (inl (mv, None)) |>
+                                          <| ts_rmw_pred := if bool_decide (kind_v = AV_exclusive) then Some eid else ts.(ts_rmw_pred) |>
             ) with "Hinterp_po_src Hpo_src") as "(Hinterp_po_src & Hpo_src)"; try assumption. cbv. reflexivity.
 
     iExists (R addr mv eid_w), lob_annot, lob_annot_uu, (ls <|lls_pop := Some eid|>).
 
+    iModIntro.
+    Local Opaque annot_res.annot_interp.
+    iNext.
+    iModIntro.
+
     iSplitR.
     (* show well-splittedness *)
-    iModIntro. iSplitR.
+    iSplitR.
     { iPureIntro. by apply Edge.subseteq_lob. }
     {
       iApply (big_sepM2_impl with "Hannot_split"). iModIntro. iIntros (k P1 P2 Hlk1 Hlk2) "Heqv".
@@ -221,7 +263,6 @@ Section rules.
     iSplitL "Hfe".
     (** getting out resources from FE *)
     {
-      iModIntro.
       rewrite flow_eq_dyn_unseal /flow_eq_dyn_def.
       iIntros (??). repeat iNamed 1.
 
@@ -241,12 +282,11 @@ Section rules.
       { set_solver + Hob_pred_sub. }
       rewrite Hgr_lk /= in Hprot_inv.
 
-      iDestruct (Hprot_inv $! eid_w _ (R addr mv eid_w) with "[] [Hp Hfe R_lob_in]") as "Hfe".
-      { iPureIntro. split;[set_solver + Hrfe| ]. rewrite Hgr_lk_w.
-        split;[reflexivity|]. eassumption. }
+      rewrite Hprot_map_lk /= in Hprot_inv.
+      iDestruct (Hprot_inv $! eid_w (R addr mv eid_w) with "[] [Hp Hfe R_lob_in]") as "Hfe".
+      { iPureIntro. set_solver + Hrfe. }
       iIntros "R_obs".
 
-      rewrite Hprot_map_lk /=.
       iDestruct ("Hfe" with "[R_lob_in Hp R_obs]") as ">Hfe".
       {
         iFrame. iFrame "#". iSplitR;first (iPureIntro;assumption).
@@ -271,7 +311,7 @@ Section rules.
       rewrite !dom_union_L dom_singleton_L.
       assert ((dom lob_annot_uu ∪ dom na) = dom na) as ->.
       { rewrite Hannot_dom. set_solver+ Hlob_annot_dom_sub. }
-      iFrame. clear;done.
+      iFrame.
       apply not_elem_of_dom. rewrite Hannot_dom. set_solver+ Hna_not_in Hlob_annot_dom_sub.
     }
 
@@ -281,25 +321,14 @@ Section rules.
 
       iApply (last_write_interp_progress_non_write with "Hinterp_local_lws");[reflexivity|].
       intro Hin. erewrite progress_to_node_mk_eid_ii in Hin;[|reflexivity].
-      pose proof (AAConsistent.event_is_write_elem_of_mem_writes2 _ Hgraph_wf Hin) as [? [Hlk' HW]].
-      rewrite Hgr_lk in Hlk'. inversion Hlk'. subst x. contradiction.
+      set_unfold in Hin. cdestruct Hin as ?? Hlk'.
+      rewrite Hgr_lk in Hlk'. inversion Hlk'.
       erewrite progress_to_node_mk_eid_ii;[iFrame;clear;done|reflexivity].
     }
 
-    iExists mv, eid_w. iModIntro. iSplit.
-
-    erewrite progress_to_node_mk_eid_ii;last reflexivity.
-    iPureIntro. simpl. unfold eid0, resp. f_equal. f_equal.
-    assert (@AACandExec.Candidate.kind_of_rreq_is_atomic _ (readreq_of_store kind_s kind_v addr dep)= bool_decide (kind_v = AV_exclusive) || bool_decide (kind_v = AV_atomic_rmw)) as ->.
-    {
-      rewrite /readreq_of_store /AACandExec.Candidate.kind_of_rreq_is_atomic /AACandExec.Candidate.kind_of_rreq_P /=.
-      destruct kind_v;simpl;
-        case_bool_decide as Heq ;first inversion Heq;
-        case_bool_decide as Heq' ;first inversion Heq';(try contradiction);done.
-    }
-    reflexivity.
-    iFrame "E_R Ed_po Ed_ctrl Ed_rf Ed_addr Hpo_src". iSplitR. iSplit; [|clear -Hne_tid;done]. iExists _, _. iFrame "E_W".
-    iFrame.
+    iApply ("HΦ" $! mv eid_w).
+    iFrame. iFrame "#".
+    clear -Hne_tid;done.
   Qed.
 
   (* Lemma mem_read_external_with_local {tid : Tid} {o_po_src ts ctxt dep addr kind_s kind_v kind_s' kind_v' leid lval} *)

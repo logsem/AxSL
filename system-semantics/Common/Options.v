@@ -1,0 +1,56 @@
+(** Coq configuration for ArchSem (not meant to leak to clients).
+
+Any downstream project should have its own options file as this might change at
+any time without notice.
+
+All ArchSem files should Import (but not Export) this.
+This file should be imported before any other ArchSem file *)
+(* Everything here should be [#[export] Set], which means when this
+file is *imported*, the option will only apply on the import site
+but not transitively. *)
+
+(** Force [Proof.] commands in section to just be [Proof using.]. This means the
+    code must specify any section variables, and that most lemmas that don't
+    need any extra section variable can just start with [Proof.] and not
+    [Proof using.] *)
+#[export] Set Default Proof Using "".
+
+(** Enforces that every tactic is executed with a single focused goal, meaning
+    that bullets and curly braces must be used to structure the proof. *)
+#[export] Set Default Goal Selector "!".
+
+(** Improve the behavior of unification for rewriting tactics, at the cost of
+    making rewriting a bit slower *)
+#[export] Set Keyed Unification.
+
+(** Disable Fancy program pattern matching. The equality can be recovered (if
+needed) with [inspect] *)
+#[export] Unset Program Cases.
+
+(** We want [idtac] by default *)
+#[export] Obligation Tactic := idtac.
+
+(** Use the if _ is _ notation in this project, but do not force users to use it *)
+Export IfNotations.
+
+(** Make typeclass resolution treat all constant as opaque by default *)
+ #[export] Hint Constants Opaque : typeclass_instances.
+
+Require Import stdpp.base.
+
+(** Functional pipe notation. *)
+Module FunctionPipeNotations.
+
+  Notation "v |> f" := (f v) (at level 68, only parsing, left associativity).
+
+  (** And pipes for  FMap notations *)
+  Notation "v |$> f" := (fmap f v) (at level 68, only parsing, left associativity).
+  Notation "v |$>@{ M } f" := (@fmap M _ _ _ f v)
+                                 (at level 68, only parsing, left associativity).
+End FunctionPipeNotations.
+Export FunctionPipeNotations.
+
+
+(* TODO automatically check that all file in the project import this file.
+   This might be done with a text checker that there exists a
+   [Require Import Options.] or [Require Import ASCommon.Options] *)

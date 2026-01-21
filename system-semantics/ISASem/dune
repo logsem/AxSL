@@ -3,16 +3,14 @@
  (package coq-system-semantics)
  (modules
    Interface
-   SailArmInstTypes
-   ArmInst)
+   SailArmInstTypes)
  (stdlib yes)
  (theories
    Ltac2
    stdpp
    RecordUpdate
    Hammer.Tactics
-   bbv
-   Sail
+   SailStdpp
    SSCCommon
  )
 )

@@ -1,38 +1,39 @@
-(*                                                                                  *)
-(*  BSD 2-Clause License                                                            *)
-(*                                                                                  *)
-(*  This applies to all files in this archive except folder                         *)
-(*  "system-semantics".                                                             *)
-(*                                                                                  *)
-(*  Copyright (c) 2023,                                                             *)
-(*     Zongyuan Liu                                                                 *)
-(*     Angus Hammond                                                                *)
-(*     Jean Pichon-Pharabod                                                         *)
-(*     Thibaut Pérami                                                               *)
-(*                                                                                  *)
-(*  All rights reserved.                                                            *)
-(*                                                                                  *)
-(*  Redistribution and use in source and binary forms, with or without              *)
-(*  modification, are permitted provided that the following conditions are met:     *)
-(*                                                                                  *)
-(*  1. Redistributions of source code must retain the above copyright notice, this  *)
-(*     list of conditions and the following disclaimer.                             *)
-(*                                                                                  *)
-(*  2. Redistributions in binary form must reproduce the above copyright notice,    *)
-(*     this list of conditions and the following disclaimer in the documentation    *)
-(*     and/or other materials provided with the distribution.                       *)
-(*                                                                                  *)
-(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"     *)
-(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE       *)
-(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE  *)
-(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE    *)
-(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL      *)
-(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR      *)
-(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER      *)
-(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,   *)
-(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE   *)
-(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
-(*                                                                                  *)
+(**************************************************************************************)
+(*  BSD 2-Clause License                                                              *)
+(*                                                                                    *)
+(*  This applies to all files in this archive except folder                           *)
+(*  "system-semantics".                                                               *)
+(*                                                                                    *)
+(*  Copyright (c) 2023,                                                               *)
+(*       Zongyuan Liu                                                                 *)
+(*       Angus Hammond                                                                *)
+(*       Jean Pichon-Pharabod                                                         *)
+(*       Thibaut Pérami                                                               *)
+(*                                                                                    *)
+(*  All rights reserved.                                                              *)
+(*                                                                                    *)
+(*  Redistribution and use in source and binary forms, with or without                *)
+(*  modification, are permitted provided that the following conditions are met:       *)
+(*                                                                                    *)
+(*  1. Redistributions of source code must retain the above copyright notice, this    *)
+(*     list of conditions and the following disclaimer.                               *)
+(*                                                                                    *)
+(*  2. Redistributions in binary form must reproduce the above copyright notice,      *)
+(*     this list of conditions and the following disclaimer in the documentation      *)
+(*     and/or other materials provided with the distribution.                         *)
+(*                                                                                    *)
+(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"       *)
+(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE         *)
+(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE    *)
+(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE      *)
+(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL        *)
+(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR        *)
+(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER        *)
+(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,     *)
+(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE     *)
+(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.              *)
+(*                                                                                    *)
+(**************************************************************************************)
 
 (* This file contains the definition of weakest preconditions of the low-level logic *)
 From iris.proofmode Require Import base tactics classes.
@@ -124,7 +125,7 @@ Definition sswp_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} (ti
       ∀ (gs : GlobalState.t) pg s' ls,
         let gr := gs.(GlobalState.gs_graph) in
         "%Hgraph_co" ∷ ⌜AAConsistent.t gr⌝ ∗
-        "%Hgraph_wf" ∷ ⌜AACandExec.NMSWF.wf gr⌝ ∗
+        "%Hgraph_wf" ∷ ⌜AACand.NMSWF.wf gr⌝ ∗
         "#Hinterp_global" ∷ (□ gconst_interp gs) ∗
         "%Hstep" ∷ ⌜LThreadStep.t gs tid s s'⌝ ∗
         "%Hat_prog" ∷ ⌜LThreadState.at_progress s pg⌝ ∗
@@ -134,8 +135,8 @@ Definition sswp_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} (ti
            (* [e] is valid, we need to do things *)
            ∀ (na : mea Σ),
            "Hannot_at_prog" ∷ na_at_progress gr tid pg na ∗
-           "Hinterp_annot" ∷ annot_interp na
-           ==∗
+           "Hinterp_annot" ∷ annot_interp na -∗
+        |==> ▷ |==>
            let s_lob := (Graph.lob_pred_of gr e) in
            ∃ (R: iProp Σ) (na_used na_unused : mea Σ) (ls' : log_ts_t),
              na_splitting_wf s_lob na na_used na_unused ∗
@@ -145,8 +146,11 @@ Definition sswp_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} (ti
              Φ s'
         else
           (* [e] is not valie, we skip it *)
-          |=i=> ((local_interp gs tid (LThreadState.get_progress s') ls) ∗ Φ s'))
-    )%I.
+           ∀ (na : mea Σ),
+           "Hinterp_annot" ∷ annot_interp na -∗
+        |==> ▷ |==>
+           annot_interp na ∗ local_interp gs tid (LThreadState.get_progress s') ls ∗  Φ s'
+    ))%I.
 
 Definition sswp_aux : seal (@sswp_def). Proof. by eexists. Qed.
 Definition sswp := sswp_aux.(unseal).
@@ -155,8 +159,8 @@ Lemma sswp_eq `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} : sswp = 
 Proof. rewrite -sswp_aux.(seal_eq) //. Qed.
 
 Definition wp_pre `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} (tid : Tid)
-    (wp : LThreadState.t -> (LThreadState.t -> iProp Σ) -> iProp Σ)
-        : LThreadState.t -> (LThreadState.t -> iProp Σ) -> iProp Σ :=
+    (wp : LThreadState.t -d> (LThreadState.t -d> iProp Σ) -d> iProp Σ)
+        : LThreadState.t -d> (LThreadState.t -d> iProp Σ) -d> iProp Σ :=
   (λ s Φ,
      (* In case that [s] is a terminated state, we show that [\phi] hold when all annotated resources holds.
       Note that it is a trick (done by [post_lifting]) aiming for recovering a post condition without annotations at all.
@@ -171,7 +175,7 @@ Definition wp_pre `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} (tid 
         (* [gr] is consistent wrt user Arm model *)
         "%Hgraph_co" ∷ ⌜AAConsistent.t gr⌝ ∗
         (* [gr] is well-formed *)
-        "%Hgraph_wf" ∷ ⌜AACandExec.NMSWF.wf gr⌝ ∗
+        "%Hgraph_wf" ∷ ⌜AACand.NMSWF.wf gr⌝ ∗
         (* logical interpretation of [gr] *)
         "#Hinterp_global" ∷ (□ gconst_interp gs) ∗
         (* taking an Opax step *)
@@ -190,7 +194,8 @@ Definition wp_pre `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} (tid 
            (* [na] is in sync with checking progress [pg] - making sure every checked event has an annotation *)
            "Hannot_at_prog" ∷ na_at_progress gr tid pg na ∗
            (* the logical interpretation of [na] *)
-           "Hinterp_annot" ∷ annot_interp na ==∗
+           "Hinterp_annot" ∷ annot_interp na -∗
+        |==> ▷ |==>
            (* [s_lob] is the set of all local ob predecessors of [e] *)
            let s_lob := (Graph.lob_pred_of gr e) in
            (* [R] is the annotation for [e],
@@ -214,52 +219,64 @@ Definition wp_pre `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} (tid 
           (* one can do some annotation spliting (cf the modality [|=i=>]) *)
           (* but nothing else - in particular no resource flowing *)
           (* XXX: maybe we can do more things here, don't see anything else that can help though *)
-          |=i=> ((local_interp gs tid (LThreadState.get_progress s') ls) ∗ wp s' Φ)
-        )
-  ))%I.
+           ∀ (na : mea Σ),
+           "Hinterp_annot" ∷ annot_interp na -∗
+        |==> ▷ |==>
+           annot_interp na ∗ local_interp gs tid (LThreadState.get_progress s') ls ∗ wp s' Φ
+        ))
+  )%I.
 
-#[local] Lemma wp_pre_mono `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} tid
-    (wp1 wp2 : LThreadState.t -> (LThreadState.t -> iProp Σ) -> iProp Σ) :
-  ⊢ (□ ∀ s Φ, wp1 s Φ -∗ wp2 s Φ) →
-    ∀ s Φ, wp_pre tid wp1 s Φ -∗ wp_pre tid wp2 s Φ.
+(* #[local] Lemma wp_pre_mono `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} tid *)
+(*     (wp1 wp2 : LThreadState.t -> (LThreadState.t -> iProp Σ) -> iProp Σ) : *)
+(*   ⊢ (□ ∀ s Φ, wp1 s Φ -∗ wp2 s Φ) → *)
+(*     ∀ s Φ, wp_pre tid wp1 s Φ -∗ wp_pre tid wp2 s Φ. *)
+(* Proof. *)
+(*   iIntros "#H"; iIntros (s Φ) "Hwp". rewrite /wp_pre. *)
+(*   destruct (LThreadState.is_terminated s); first done. *)
+(*   iIntros (????) "Hs". iDestruct ("Hwp" with "Hs") as "Hwp". *)
+(*   case_bool_decide. *)
+(*   - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&(?&$)&?&Hannot&?&Hwp)";iModIntro. *)
+(*     iExists R,_. iSpecialize ("H" with "Hwp"). iFrame. *)
+(*   - iDestruct "Hwp" as ">[? ?]". *)
+(*     iModIntro. iFrame. by iApply "H". *)
+(* Qed. *)
+
+(* (* wrapper around [wp_pre] to make the type suitable for fixed point computation *) *)
+(* #[local] Definition wp_pre' `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} tid : *)
+(*   (prodO (leibnizO LThreadState.t) (LThreadState.t -d> iPropO Σ) -d> iPropO Σ) -> *)
+(*   (prodO (leibnizO LThreadState.t) (LThreadState.t -d> iPropO Σ) -d> iPropO Σ) := *)
+(*   uncurry ∘ wp_pre tid ∘ curry. *)
+
+#[local] Instance wp_pre_contractive `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} tid : Contractive (wp_pre tid).
 Proof.
-  iIntros "#H"; iIntros (s Φ) "Hwp". rewrite /wp_pre.
-  destruct (LThreadState.is_terminated s); first done.
-  iIntros (????) "Hs". iDestruct ("Hwp" with "Hs") as "Hwp".
-  case_bool_decide.
-  - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&(?&$)&?&Hannot&?&Hwp)";iModIntro.
-    iExists R,_. iSpecialize ("H" with "Hwp"). iFrame.
-  - iDestruct "Hwp" as ">[? ?]".
-    iModIntro. iFrame. by iApply "H".
+  rewrite /wp_pre => n wp wp' Hwp s Φ.
+  repeat (f_contractive || f_equiv).
 Qed.
 
-(* wrapper around [wp_pre] to make the type suitable for fixed point computation *)
-#[local] Definition wp_pre' `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} tid :
-  (prodO (leibnizO LThreadState.t) (LThreadState.t -d> iPropO Σ) → iPropO Σ) ->
-  (prodO (leibnizO LThreadState.t) (LThreadState.t -d> iPropO Σ) → iPropO Σ) :=
-  uncurry ∘ wp_pre tid ∘ curry.
 
-#[local] Instance wp_pre_mono' `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} tid: BiMonoPred (wp_pre' tid).
-Proof.
-  constructor.
-  - iIntros (wp1 wp2 ??) "#H". iIntros ([s Φ]); iRevert (s Φ).
-    iApply wp_pre_mono. iIntros "!>" (??).
-    iApply ("H" $! (s, Φ)).
-  - intros wp Hwp n [s1 Φ1] [s2 Φ2] [?%leibniz_equiv ?]. simplify_eq/=.
-    rewrite /curry /wp_pre /post_lifting. do 14 (f_equiv || done).
-    2:{ rewrite /Datatypes.curry. by apply pair_ne. }
-    do 14 (f_equiv || done). rewrite /Datatypes.curry. by apply pair_ne.
-Qed.
+(* #[local] Instance wp_pre_mono' `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} tid: BiMonoPred (wp_pre' tid). *)
+(* Proof. *)
+(*   constructor. *)
+(*   - iIntros (wp1 wp2 ??) "#H". iIntros ([s Φ]); iRevert (s Φ). *)
+(*     iApply wp_pre_mono. iIntros "!>" (??). *)
+(*     iApply ("H" $! (s, Φ)). *)
+(*   - intros wp Hwp n [s1 Φ1] [s2 Φ2] [?%leibniz_equiv ?]. simplify_eq/=. *)
+(*     rewrite /curry /wp_pre /post_lifting. do 14 (f_equiv || done). *)
+(*     2:{ rewrite /Datatypes.curry. by apply pair_ne. } *)
+(*     do 14 (f_equiv || done). rewrite /Datatypes.curry. by apply pair_ne. *)
+(* Qed. *)
 
 (* we take a least fixed point of [wp_pre] to get really [wp] *)
-#[local] Definition wp_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} (tid: Tid) :
-  LThreadState.t -> (LThreadState.t -> iProp Σ) -> iProp Σ:=
-  λ s Φ, bi_least_fixpoint (wp_pre' tid) (s,Φ).
+(* #[local] Definition wp_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} (tid: Tid) : *)
+(*   LThreadState.t -> (LThreadState.t -> iProp Σ) -> iProp Σ:= *)
+(*   λ s Φ, bi_least_fixpoint (wp_pre' tid) (s,Φ). *)
 
+Definition wp_def `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} (tid: Tid) :
+  LThreadState.t -> (LThreadState.t -> iProp Σ) -> iProp Σ := fixpoint (wp_pre tid).
 Definition wp_aux : seal (@wp_def). Proof. by eexists. Qed.
 Definition wp := wp_aux.(unseal).
-
 Arguments wp {Σ _ _ _ _}.
+
 Lemma wp_eq `{CMRA Σ} `{!invGS_gen HasNoLc Σ} `{!irisG} `{!irisGL} : wp = @wp_def Σ _ _ _ _.
 Proof. rewrite -wp_aux.(seal_eq) //. Qed.
 
@@ -278,6 +295,26 @@ Notation "'WP' m @ id {{ v , Q } }" := (wp id m (λ v, Q))
   (at level 20, m, Q at level 200,
    format "'[' 'WP'  m  '/' '[       ' @  id   {{  v ,  Q  } } ']' ']'") : bi_scope.
 
+(* Texan triples - sswp *)
+Notation "'{SS{{' P } } } m @ id {{{ x .. y , 'RET' pat ; Q } } }" :=
+  (□ ∀ Φ,
+      P -∗ ▷ (∀ x, .. (∀ y, Q -∗ Φ pat) .. ) -∗ SSWP m @ id  {{ Φ }})%I
+    (at level 20, x closed binder, y closed binder,
+     format "'[hv' {SS{{  P  } } }  '/  ' m  '/' @  id  {{{  x  ..  y ,  RET  pat ;  Q  } } } ']'") : bi_scope.
+
+Notation "'{SS{{' P } } } m @ id {{{ 'RET' pat ; Q } } }" :=
+  (□ ∀ Φ, P -∗ ▷ (Q -∗ Φ pat) -∗ SSWP m  @ id {{ Φ }})%I
+    (at level 20,
+     format "'[hv' {SS{{  P  } } }  '/  ' m  '/' @  id {{{  RET  pat ;  Q  } } } ']'") : bi_scope.
+
+(** Aliases for stdpp scope -- they inherit the levels and format from above. *)
+
+Notation "'{SS{{' P } } } e @ id {{{ x .. y , 'RET' pat ; Q } } }" :=
+  (∀ Φ, P -∗ ▷ (∀ x, .. (∀ y, Q -∗ Φ pat) .. ) -∗ SSWP e @ id {{ Φ }}) : stdpp_scope.
+Notation "'{SS{{' P } } } e @ id {{{ 'RET' pat ; Q } } }" :=
+  (∀ Φ, P -∗ ▷ (Q -∗ Φ pat) -∗ SSWP e @ id {{ Φ }}) : stdpp_scope.
+
+
 Section wp.
   Context `{CMRA Σ}.
   Context `{!invGS_gen HasNoLc Σ}.
@@ -290,22 +327,7 @@ Section wp.
 
   Lemma wp_unfold id s Φ :
     WP s @ id {{ Φ }} ⊣⊢ wp_pre id (wp id) s Φ.
-  Proof. rewrite wp_eq /wp_def least_fixpoint_unfold //. Qed.
-
-  Lemma wp_ind tid Ψ :
-    (∀ n s, Proper (pointwise_relation _ (dist n) ==> dist n) (Ψ s)) →
-    □ (∀ s Φ, wp_pre tid (λ s Φ, Ψ s Φ ∧ WP s @ tid {{ Φ }}) s Φ -∗ Ψ s Φ) -∗
-    ∀ s Φ, WP s @ tid {{ Φ }} -∗ Ψ s Φ.
-  Proof.
-    iIntros (HΨ). iIntros "#IH" (s Φ) "H". rewrite wp_eq.
-    set (Ψ' := uncurry Ψ :
-           prodO (leibnizO LThreadState.t) (LThreadState.t -d> iPropO Σ) → iPropO Σ).
-    assert (NonExpansive Ψ').
-    { intros n [s1 Φ1] [s2 Φ2]
-        [?%leibniz_equiv ?]; simplify_eq/=. by apply HΨ. }
-    iApply (least_fixpoint_ind _ Ψ' with "[] H").
-    iIntros "!>" ([? ?]) "H". by iApply "IH".
-  Qed.
+  Proof. rewrite wp_eq. apply (fixpoint_unfold (wp_pre id)). Qed.
 
   Lemma wp_sswp id s Φ :
     WP s @ id {{ Φ }} ⊣⊢ SSWP s @ id {{s', WP s' @ id {{ Φ }} }}.
@@ -325,39 +347,41 @@ Section wp.
   #[global] Instance wp_ne id s n :
     Proper (pointwise_relation _ (dist n) ==> dist n) (wp id s).
   Proof.
-    intros Φ1 Φ2 HΦ. rewrite !wp_eq.
-    by apply (least_fixpoint_ne _), pair_ne, HΦ.
+    revert s. induction (lt_wf n) as [n _ IH]=> s Φ Ψ HΦ.
+    rewrite !wp_unfold /wp_pre /post_lifting.
+    repeat ((f_contractive || f_equiv); try apply IH); eauto;
+    eapply dist_le; eauto with lia.
   Qed.
 
-  #[global] Instance sswp_proper id  s :
+  #[global] Instance sswp_proper id s :
     Proper (pointwise_relation _ (≡) ==> (≡)) (sswp id s).
   Proof.
     by intros Φ Φ' ?; apply equiv_dist=>n; apply sswp_ne=>v; apply equiv_dist.
   Qed.
 
-  #[global] Instance wp_proper id  s :
+  #[global] Instance wp_proper id s :
     Proper (pointwise_relation _ (≡) ==> (≡)) (wp id s).
   Proof.
     by intros Φ Φ' ?; apply equiv_dist=>n; apply wp_ne=>v; apply equiv_dist.
   Qed.
 
-  (* #[global] Instance sswp_contractive id  s n : *)
-  (*   TCEq (is_terminated s) false → *)
-  (*   Proper (pointwise_relation _ (dist_later n) ==> dist n) (sswp id s). *)
-  (* Proof. *)
-  (*   intros He Φ Ψ HΦ. rewrite !sswp_eq /sswp_def He. *)
-  (*   repeat apply bi.forall_ne =>?. *)
-  (*   by repeat (f_contractive || f_equiv). *)
-  (* Qed. *)
+  #[global] Instance sswp_contractive id s n :
+    TCEq (is_terminated s) false →
+    Proper (pointwise_relation _ (dist_later n) ==> dist n) (sswp id s).
+  Proof.
+    intros He Φ Ψ HΦ. rewrite !sswp_eq /sswp_def He.
+    repeat apply bi.forall_ne =>?.
+    by repeat (f_contractive || f_equiv).
+  Qed.
 
-  (* #[global] Instance wp_contractive id  s n : *)
-  (*   TCEq (is_terminated s) false → *)
-  (*   Proper (pointwise_relation _ (dist_later n) ==> dist n) (wp id  s). *)
-  (* Proof. *)
-  (*   intros He Φ Ψ HΦ. rewrite !wp_unfold /wp_pre He. *)
-  (*   repeat apply bi.forall_ne =>?. *)
-  (*   by repeat (f_contractive || f_equiv). *)
-  (* Qed. *)
+  #[global] Instance wp_contractive id s n :
+    TCEq (is_terminated s) false →
+    Proper (pointwise_relation _ (dist_later n) ==> dist n) (wp id  s).
+  Proof.
+    intros He Φ Ψ HΦ. rewrite !wp_unfold /wp_pre He.
+    repeat apply bi.forall_ne =>?.
+    by repeat (f_contractive || f_equiv).
+  Qed.
 
   Lemma sswp_terminated' id Φ s :
     is_terminated s = true → Φ s ⊢ SSWP s @ id {{ Φ }}.
@@ -382,13 +406,20 @@ Section wp.
     { iMod "H". iModIntro. by iApply ("HΦ" with "[-]"). }
     iIntros (????) "Hs". iDestruct ("H" with "Hs") as "Hwp".
     case_bool_decide.
-    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&(?&FE)&?&?&?&Hwp)".
+    - iIntros (?) "Hs'".
+      iMod ("Hwp" with "Hs'") as "Hwp".
+      iModIntro. iNext.
+      iDestruct "Hwp" as ">(%&%&%&%&(?&FE)&?&?&?&Hwp)".
       iExists R,_,_. iFrame. by iApply "HΦ".
-    - iDestruct "Hwp" as ">[? Hwp]". iModIntro. iFrame. by iApply "HΦ".
+    - iIntros (?) "H".
+      iDestruct ("Hwp" with "H") as ">H".
+      iModIntro. iNext.
+      iMod "H" as "(? & ? & ?)".
+      iFrame. by iApply "HΦ".
   Qed.
 
   Lemma sswp_strong_mono' id s Φ Ψ :
-    SSWP s @ id {{ Φ }} -∗ (∀ k, Φ k -∗ |=i=> Ψ k) -∗ SSWP s @ id {{ Ψ }}.
+    SSWP s @ id {{ Φ }} -∗  (∀ k, Φ k -∗ |=i=> Ψ k) -∗ SSWP s @ id {{ Ψ }}.
   Proof.
     iIntros "H HΦ".
     rewrite sswp_eq /sswp_def.
@@ -398,10 +429,19 @@ Section wp.
     case_bool_decide.
     - iIntros (?) "[Hs' Hannot]".
       rewrite interp_mod_eq /interp_mod_def.
-      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">(%&%&%&%&?&FE&Hannot&?&H)".
+
+      iMod ("Hwp" with "[$Hs' $Hannot]") as "Hwp".
+      iModIntro. iNext.
+      iDestruct "Hwp" as ">(%&%&%&%&?&FE&Hannot&?&H)".
       iSpecialize ("HΦ" with "H"). iDestruct ("HΦ" with "Hannot") as ">[? ?]".
       iExists R. by iFrame.
-    - iDestruct "Hwp" as ">[? Hwp]". iMod ("HΦ" with "Hwp"). iModIntro. iFrame.
+    - iIntros (?) "H".
+      iDestruct ("Hwp" with "H") as ">H".
+      iModIntro. iNext.
+      iMod "H" as "(Ha & $ & Hwp)".
+      rewrite interp_mod_eq.
+      iMod ("HΦ" with "Hwp Ha") as "[? ?]".
+      by iFrame.
   Qed.
 
   Lemma post_lifting_strong_mono id s Φ Ψ :
@@ -416,17 +456,23 @@ Section wp.
   Lemma wp_strong_mono id s Φ Ψ :
     WP s @ id {{ Φ }} -∗ (∀ k, Φ k ==∗ Ψ k) -∗ WP s @ id {{ Ψ }}.
   Proof.
-    iIntros "H HΦ". iRevert (Ψ) "HΦ"; iRevert (s Φ) "H".
-    iApply wp_ind; first solve_proper.
-    iIntros "!>" (s Φ) "IH"; iIntros (Ψ) "HΦ".
-    rewrite !wp_unfold /wp_pre.
+    iIntros "H HΦ".
+    iLöb as "IH" forall ( s Φ Ψ).
+    rewrite !wp_unfold  /wp_pre.
     destruct (is_terminated s) eqn:?.
-    { by iApply (post_lifting_strong_mono with "IH HΦ"). }
-    iIntros (????) "Hs". iDestruct ("IH" with "Hs") as "Hwp".
+    { by iApply (post_lifting_strong_mono with "H HΦ"). }
+
+    iIntros (????) "Hs". iDestruct ("H" with "Hs") as "Hwp".
     case_bool_decide.
-    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&?&FE&?&?&Hwp)".
-      iExists R. iFrame. iApply ("Hwp" with "HΦ").
-    - iMod "Hwp" as "[? Hwp]". iModIntro;iFrame. iApply ("Hwp" with "HΦ").
+    - iIntros (?) "Hs'".
+      iDestruct ("Hwp" with "Hs'") as ">Hwp".
+      iModIntro. iNext.
+       iMod "Hwp" as "(%&%&%&%&?&FE&?&?&Hwp)".
+      iExists R. iFrame. iApply ("IH" with "Hwp HΦ").
+    - iIntros (?) "Hs'".
+      iDestruct ("Hwp" with "Hs'") as ">Hwp".
+      iModIntro. iNext. iMod "Hwp" as "($ & $ &Hwp)".
+      iModIntro. iApply ("IH" with "Hwp HΦ").
   Qed.
 
   Lemma bupd_sswp id s Φ :
@@ -437,9 +483,14 @@ Section wp.
     { by iApply interp_mod_bupd. }
     iIntros (????) "Hs". iDestruct ("H" with "Hs") as "Hwp".
     case_bool_decide.
-    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">>(%&%&%&%&?&?&?&Hwp)".
+    - iIntros (?) "Hs'".
+      iMod ("Hwp" with "Hs'") as ">Hwp".
+      iModIntro. iNext.
+      iDestruct "Hwp" as ">(%&%&%&%&?&?&?&Hwp)".
       iExists R. by iFrame.
-    - iMod "Hwp" as ">[? ?]". iModIntro. iFrame.
+    - iIntros (?) "H".
+      iDestruct ("Hwp" with "H") as ">H".
+      done.
   Qed.
 
   Lemma iupd_sswp id s Φ :
@@ -453,9 +504,15 @@ Section wp.
     - iIntros (?) "[Hs' Hannot]".
       rewrite interp_mod_eq /interp_mod_def.
       iDestruct ("Hwp" with "Hannot") as ">[Hwp Hannot]".
-      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">(%&%&%&%&?&?&?&Hwp)";iModIntro.
+      iMod ("Hwp" with "[$Hs' $Hannot]") as "Hwp".
+      iModIntro. iNext.
+      iDestruct "Hwp" as ">(%&%&%&%&?&?&?&Hwp)";iModIntro.
       iExists R. by iFrame.
-    - iMod "Hwp" as ">[? ?]". iModIntro. iFrame.
+    - iIntros (?) "H".
+      rewrite interp_mod_eq.
+      iDestruct ("Hwp" with "H") as ">[Hwp H]".
+      iDestruct ("Hwp" with "H") as ">$".
+      all: by iFrame.
   Qed.
 
   Lemma sswp_bupd id s Φ :
@@ -467,10 +524,16 @@ Section wp.
       iIntros (?) "Hannot". iDestruct ("H" with "Hannot") as ">[>$ $]". done. }
     iIntros (????) "Hs". iDestruct ("H" with "Hs") as "Hwp".
     case_bool_decide.
-    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&?&?&?&?&Hwp)".
+    - iIntros (?) "Hs'".
+      iMod ("Hwp" with "Hs'") as "Hwp".
+      iModIntro. iNext.
+      iDestruct "Hwp" as ">(%&%&%&%&?&?&?&?&>Hwp)".
       iExists R. by iFrame.
-    - iMod "Hwp" as "[? Hwp]". iApply interp_mod_bupd. iMod "Hwp".
-      iModIntro. iModIntro. iFrame.
+    - iIntros (?) "H".
+      iMod ("Hwp" with "H") as "Hwp".
+      iModIntro. iNext.
+      iMod "Hwp" as "($&$&?)".
+      iFrame.
   Qed.
 
   Lemma sswp_iupd id s Φ :
@@ -483,11 +546,20 @@ Section wp.
     case_bool_decide.
     - iIntros (?) "[Hs' Hannot]".
       rewrite interp_mod_eq /interp_mod_def.
-      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">(%&%&%&%&?&?&Hannot&Hwp)".
+      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">Hwp".
+      iModIntro.
+      iNext.
+      iMod "Hwp" as "(%&%&%&%&?&?&Hannot&Hwp)".
       iDestruct "Hwp" as "[? Hwp]".
       iDestruct ("Hwp" with "Hannot") as ">[Hwp Hannot]".
       iExists R. by iFrame.
-    - iMod "Hwp" as "[? Hwp]". iMod "Hwp". iModIntro. iFrame.
+    - iIntros (?) "H".
+      rewrite interp_mod_eq.
+      iDestruct ("Hwp" with "H") as ">Hwp".
+      iModIntro. iNext.
+      iDestruct "Hwp" as ">(Hwp & $& H)".
+      iMod ("H" with "Hwp") as "[? ?]".
+      by iFrame.
   Qed.
 
   Lemma bupd_wp id s Φ :
@@ -497,9 +569,13 @@ Section wp.
     { iApply post_lifting_interp_mod. iApply interp_mod_bupd. iMod "H". iModIntro. iModIntro. done. }
     iIntros (????) "Hs". iDestruct ("H" with "Hs") as "Hwp".
     case_bool_decide.
-    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">>(%&%&%&%&?&?&?&?&Hwp)".
+    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">>Hwp".
+      iModIntro. iNext.
+      iDestruct "Hwp" as ">(%&%&%&%&?&?&?&?&Hwp)".
       iExists R. by iFrame.
-    - iMod "Hwp" as ">[? Hwp]". iModIntro;iFrame.
+    - iIntros (?) "H".
+      iDestruct ("Hwp" with "H") as ">Hwp".
+      done.
   Qed.
 
   Lemma iupd_wp id s Φ :
@@ -512,9 +588,16 @@ Section wp.
     - iIntros (?) "[Hs' Hannot]".
       rewrite interp_mod_eq /interp_mod_def.
       iDestruct ("Hwp" with "Hannot") as ">[Hwp Hannot]".
-      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">(%&%&%&%&?&?&?&Hwp)";iModIntro.
+
+      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">Hwp".
+      iModIntro. iNext.
+      iDestruct "Hwp" as ">(%&%&%&%&?&?&?&Hwp)";iModIntro.
       iExists R. by iFrame.
-    - iMod "Hwp" as ">[? Hwp]". iModIntro;iFrame.
+    - iIntros (?) "H".
+      rewrite interp_mod_eq.
+      iDestruct ("Hwp" with "H") as ">[Hwp H]".
+      iDestruct ("Hwp" with "H") as ">Hwp".
+      iModIntro. done.
   Qed.
 
   Lemma wp_bupd id s Φ :
@@ -548,10 +631,16 @@ Section wp.
     { iMod "H". iApply interp_mod_bupd'. iMod "HP". by iApply "H". }
     iIntros (????) "Hs". iDestruct ("H" with "Hs") as "Hwp".
     case_bool_decide.
-    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&?&?&?&?&Hwp)".
+    - iIntros (?) "Hs'".
+      iDestruct ("Hwp" with "Hs'") as ">Hwp".
+      iModIntro. iNext.
+      iDestruct "Hwp" as ">(%&%&%&%&?&?&?&?&Hwp)".
       iExists R. iFrame. iMod ("Hwp" with "HP") as "$".
-    - iMod "Hwp" as "[? Hwp]". iApply interp_mod_bupd'.
-      iMod "HP". iMod ("Hwp" with "HP") as "$". done.
+    - iIntros (?) "H".
+      iDestruct ("Hwp" with "H") as ">Hwp".
+      iModIntro. iNext.
+      iMod "Hwp" as "(? & Hwp & H)". iFrame.
+      iMod "HP". iMod ("H" with "HP") as "$". done.
   Qed.
 
   Lemma sswp_step_iupd id s P Φ :
@@ -567,13 +656,20 @@ Section wp.
     - iIntros (?) "[Hs' Hannot]".
       rewrite interp_mod_eq /interp_mod_def.
       iDestruct ("HP" with "Hannot") as ">[HP Hannot]".
-      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">(%&%&%&%&?&?&Hannot&Hwp)".
+      iDestruct ("Hwp" with "[$Hs' $Hannot]") as ">Hwp".
+      iModIntro. iNext.
+      iMod "Hwp" as "(%&%&%&%&?&?&Hannot&Hwp)".
       iDestruct "Hwp" as "[? Hwp]". iDestruct ("Hwp" with "HP") as "Hwp".
       iDestruct ("Hwp" with "Hannot") as ">[Hwp ?]".
       iExists R. by iFrame.
-    - iMod "Hwp" as "[? Hwp]".
-      iMod "HP".  iMod ("Hwp" with "HP") as "?".
-      iModIntro;iFrame.
+    - iIntros (?) "H".
+      iDestruct ("Hwp" with "H") as ">Hwp".
+      iModIntro. iNext.
+      iMod "Hwp" as "(Ha & $ & Hwp)".
+      rewrite interp_mod_eq.
+      iMod ("HP" with "Ha") as "[HP Ha]".
+      iDestruct ("Hwp" with "HP Ha") as ">[? ?]".
+      by iFrame.
   Qed.
 
   Lemma wp_step_bupd id s P Φ :
@@ -586,12 +682,18 @@ Section wp.
     { iApply (post_lifting_strong_mono with "H"). iIntros (?) "H". iMod "HP". by iApply "H". }
     iIntros (????) "Hs". iDestruct ("H" with "Hs") as "Hwp".
     case_bool_decide.
-    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&?&?&?&?&Hwp)".
+    - iIntros (?) "Hs'".
+      iDestruct ("Hwp" with "Hs'") as ">Hwp".
+      iModIntro. iNext.
+      iDestruct "Hwp" as ">(%&%&%&%&?&?&?&?&Hwp)".
       iExists R. iFrame. iMod "HP". iModIntro. iApply (wp_strong_mono with "Hwp").
       iIntros (k) "H"; iApply "H"; done.
-    - iMod "HP". iMod "Hwp" as "[? Hwp]".
-      iApply interp_mod_bupd'. iFrame.
-      iApply (wp_strong_mono with "Hwp").
+    - iIntros (?) "H".
+      iDestruct ("Hwp" with "H") as ">Hwp".
+      iModIntro. iNext.
+      iMod "Hwp" as "(? & Hwp & H)". iFrame.
+      iMod "HP".
+      iApply (wp_strong_mono with "H").
       iModIntro. iIntros (k) "H"; iApply "H"; done.
   Qed.
 
@@ -602,17 +704,31 @@ Section wp.
   Proof.
     rewrite !wp_unfold /wp_pre. iIntros "HP H".
     destruct (is_terminated s).
-    { iApply post_lifting_interp_mod. iMod "HP". iModIntro. iApply (post_lifting_strong_mono with "H"). iIntros (?) "H". by iApply "H". }
+    {
+      iApply post_lifting_interp_mod.
+      iMod "HP".
+      iModIntro.
+      iApply (post_lifting_strong_mono with "H").
+      iIntros (?) "H". by iApply "H".
+    }
     iIntros (????) "Hs". iDestruct ("H" with "Hs") as "Hwp".
     case_bool_decide.
-    - iIntros (?) "Hs'". iDestruct ("Hwp" with "Hs'") as ">(%&%&%&%&?&?&Hannot&?&Hwp)".
-      rewrite interp_mod_eq /interp_mod_def.
+    - iIntros (?) "Hs'".
+      iDestruct ("Hwp" with "[$Hs']") as ">Hwp".
+      iModIntro. iNext.
+      iMod "Hwp" as "(%&%&%&%&?&?&Hannot&? &Hwp)".
+      rewrite interp_mod_eq.
       iDestruct ("HP" with "Hannot") as ">[HP Hannot]".
       iExists R. iFrame. iApply (wp_strong_mono with "Hwp").
       iModIntro. iIntros (k) "H"; iApply "H"; done.
-    - iMod "HP". iMod "Hwp" as "[? Hwp]".
-      iApply interp_mod_bupd'. iFrame.
-      iApply (wp_strong_mono with "Hwp").
+    - iIntros (?) "H".
+      iDestruct ("Hwp" with "H") as ">Hwp".
+      iModIntro. iNext.
+      iMod "Hwp" as "(Ha & Hwp & H)".
+      rewrite interp_mod_eq.
+      iMod ("HP" with "Ha") as "[Ha HP]".
+      iFrame.
+      iApply (wp_strong_mono with "H").
       iModIntro. iIntros (k) "H"; iApply "H"; done.
   Qed.
 

@@ -1,38 +1,39 @@
-(*                                                                                  *)
-(*  BSD 2-Clause License                                                            *)
-(*                                                                                  *)
-(*  This applies to all files in this archive except folder                         *)
-(*  "system-semantics".                                                             *)
-(*                                                                                  *)
-(*  Copyright (c) 2023,                                                             *)
-(*     Zongyuan Liu                                                                 *)
-(*     Angus Hammond                                                                *)
-(*     Jean Pichon-Pharabod                                                         *)
-(*     Thibaut Pérami                                                               *)
-(*                                                                                  *)
-(*  All rights reserved.                                                            *)
-(*                                                                                  *)
-(*  Redistribution and use in source and binary forms, with or without              *)
-(*  modification, are permitted provided that the following conditions are met:     *)
-(*                                                                                  *)
-(*  1. Redistributions of source code must retain the above copyright notice, this  *)
-(*     list of conditions and the following disclaimer.                             *)
-(*                                                                                  *)
-(*  2. Redistributions in binary form must reproduce the above copyright notice,    *)
-(*     this list of conditions and the following disclaimer in the documentation    *)
-(*     and/or other materials provided with the distribution.                       *)
-(*                                                                                  *)
-(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"     *)
-(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE       *)
-(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE  *)
-(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE    *)
-(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL      *)
-(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR      *)
-(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER      *)
-(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,   *)
-(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE   *)
-(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
-(*                                                                                  *)
+(**************************************************************************************)
+(*  BSD 2-Clause License                                                              *)
+(*                                                                                    *)
+(*  This applies to all files in this archive except folder                           *)
+(*  "system-semantics".                                                               *)
+(*                                                                                    *)
+(*  Copyright (c) 2023,                                                               *)
+(*       Zongyuan Liu                                                                 *)
+(*       Angus Hammond                                                                *)
+(*       Jean Pichon-Pharabod                                                         *)
+(*       Thibaut Pérami                                                               *)
+(*                                                                                    *)
+(*  All rights reserved.                                                              *)
+(*                                                                                    *)
+(*  Redistribution and use in source and binary forms, with or without                *)
+(*  modification, are permitted provided that the following conditions are met:       *)
+(*                                                                                    *)
+(*  1. Redistributions of source code must retain the above copyright notice, this    *)
+(*     list of conditions and the following disclaimer.                               *)
+(*                                                                                    *)
+(*  2. Redistributions in binary form must reproduce the above copyright notice,      *)
+(*     this list of conditions and the following disclaimer in the documentation      *)
+(*     and/or other materials provided with the distribution.                         *)
+(*                                                                                    *)
+(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"       *)
+(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE         *)
+(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE    *)
+(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE      *)
+(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL        *)
+(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR        *)
+(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER        *)
+(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,     *)
+(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE     *)
+(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.              *)
+(*                                                                                    *)
+(**************************************************************************************)
 
 (* This file contains the instruction semantics *)
 Require Import Strings.String.
@@ -62,17 +63,18 @@ Section instructions.
   | AEreg r
   | AEbinop (op: ArithOp) (ae1: ArithExp) (ae2: ArithExp).
 
+  Inductive BarKind := | BKsy | BKld | BKst | BKisb.
+
   Implicit Type ae : ArithExp.
-  Implicit Type dκ : DmbKind.
   Implicit Type addr : Addr.
-  Implicit Type kv : AccessVariety.
+  Implicit Type bk : BarKind.
   Implicit Type ks : AccessStrength.
+  Implicit Type kv : AccessVariety.
 
   Inductive Instruction :=
-  | ILoad ks kv r ae
-  | IStore ks kv r ae1 ae2 (* src, dst *)
-  | IDmb dκ
-  | IIsb
+  | ILoad kv ks r ae
+  | IStore kv ks r ae1 ae2 (* src, dst *)
+  | IBarrier bk
   | IAssign r ae
   | IBr addr
   | IBne ae addr
@@ -82,14 +84,18 @@ End instructions.
 
 Section interpretation.
 
+  Implicit Type ks : AccessStrength.
+  Implicit Type kv : AccessVariety.
+  Implicit Type bk : BarKind.
+
   Import AAInter.
-  Import AACandExec.
+  Import AACand.
 
   (* interp of expressions *)
-  Fixpoint AEInterp ae : iMon Val :=
+  Fixpoint AEInterp ae : AAInter.iMon Val :=
     match ae with
     | AEval w => Ret w
-    | AEreg r => Next (RegRead r true) (fun w => mret w)
+    | AEreg r => Next (RegRead r ()) (fun w => mret w)
     | AEbinop op ae1 ae2 => w1 ← (AEInterp ae1);
                             w2 ← (AEInterp ae2);
                             Ret (match op with
@@ -102,10 +108,10 @@ Section interpretation.
   Definition RNPC : string := "pc".
 
   (* increment PC *)
-  Definition IncPCInterp : iMon unit :=
-    w ← Next (RegRead RNPC true) (fun w => mret w);
+  Definition IncPCInterp : iMon :=
+    w ← Next (RegRead RNPC ()) (fun w => mret w);
     (* We don't track dependencies for the PC, since it's not a GPR *)
-    Next (RegWrite RNPC true None (w `+Z` 4)%bv) (fun _ => Ret tt).
+    Next (RegWrite RNPC () (w `+Z` 4)%bv None) (fun _ => Ret tt).
 
   (* computing dependencies of an expression *)
   Fixpoint dep_of_AE_aux ae :=
@@ -122,68 +128,71 @@ Section interpretation.
   Definition dep_of_AE ae := DepOn.make (dep_of_AE_aux ae) [].
 
   (* lifting access kinds to [accessKind] *)
-  Definition access_kind_of_AK kind_strength kind_variety : accessKind :=
-   AK_explicit (Build_Explicit_access_kind kind_variety kind_strength).
+  Definition access_kind_of_AK kv ks : machine.AccessKind := AK_explicit (Build_Explicit_access_kind kv ks).
 
   (* making [WriteReq] *)
-  Definition writereq_of_store {n} kind_strength kind_variety w addr dep_a dep_d : WriteReq.t n:=
-    WriteReq.make _ addr (access_kind_of_AK kind_strength kind_variety) w None tt false (Some dep_a) (Some dep_d).
+  Definition writereq_of_store kv ks w addr adep ddep : WriteReq.t 8:=
+    WriteReq.make _ addr (access_kind_of_AK kv ks) w (Some false) adep ddep.
 
   (* making [ReadReq] *)
-  Definition readreq_of_store {n} kind_strength kind_variety addr dep_a : ReadReq.t n:=
-    ReadReq.make _ addr (access_kind_of_AK kind_strength kind_variety) None tt false (Some dep_a).
+  Definition readreq_of_load kv ks addr adep : ReadReq.t 8:=
+    ReadReq.make _ addr (access_kind_of_AK kv ks) false adep.
 
-  Definition empty_depon := Some (DepOn.make [] []).
+  (* Definition empty_depon := Some (DepOn.make [] []). *)
+
+  Definition barrier_of bk : BarrierKind :=
+    match bk with
+    | BKsy => Barrier_DMB (Build_DxB MBReqDomain_FullSystem MBReqTypes_All true)
+    | BKst => Barrier_DMB (Build_DxB MBReqDomain_FullSystem MBReqTypes_Writes true)
+    | BKld => Barrier_DMB (Build_DxB MBReqDomain_FullSystem MBReqTypes_Reads true)
+    | BKisb => Barrier_ISB ()
+    end.
+
 
   (* interp of instructions *)
-  Definition InstrInterp (i : Instruction) : iMon () :=
+  Definition InstrInterp (i : Instruction) : iMon:=
     match i with
-    | ILoad ks kv r ae =>
+    | ILoad kv ks r ae =>
         addr ← AEInterp ae;
-        Next (MemRead AAArch.val_size (readreq_of_store ks kv addr (dep_of_AE ae)))
+        Next (MemRead _ (readreq_of_load kv ks addr (Some (dep_of_AE ae))))
           (* bool is for cheri tags *)
           (fun (out: (bv _ * option bool + abort)) =>
              match out with
-             | inl (w, _) => Next (RegWrite r true (Some (DepOn.make [] [0%N])) w) (fun _ => Ret tt)
+             | inl (w, _) => Next (RegWrite r () w (Some (DepOn.make [] [0%N]))) (fun _ => Ret tt)
              (* Unreachable, since abort is empty *)
              | inr _ => Ret tt end);;
         IncPCInterp
-    | IStore ks kv r ae1 ae2 =>
+    | IStore kv ks r ae1 ae2 =>
         w ← AEInterp ae1;
         addr ← AEInterp ae2;
-        Next (MemWrite _ (writereq_of_store ks kv w addr (dep_of_AE ae2) (dep_of_AE ae1)))
+        Next (MemWrite _ (writereq_of_store kv ks w addr (Some (dep_of_AE ae2)) (Some (dep_of_AE ae1))))
           (* bool is for atomic write success *)
-          (fun (out: option bool + abort) =>
-             match out with
-             | inl None => Ret tt
-             (* NOTE: No dependencies on result bit *)
-             | inl (Some b) => Next (RegWrite r true empty_depon (bool_to_bv _ b)) (fun _ => Ret tt)
-             (* Unreachable, since abort is empty *)
-             | _ => Ret tt end);;
+          (fun (out: bool + abort) =>
+             if bool_decide (kv = AV_exclusive) then
+               match out with
+               (* NOTE: No dependencies on result bit *)
+               | inl b => Next (RegWrite r () (bool_to_bv _ b) None) (fun _ => Ret tt)
+               (* Unreachable, since abort is empty *)
+               | _ => Ret tt end
+             else Ret tt);;
         IncPCInterp
-    | IDmb dκ => Next (Barrier (AAArch.DMB dκ)) (fun _ => Ret tt);;
-              IncPCInterp
-    | IIsb => Next (Barrier AAArch.ISB) (fun _ => Ret tt);;
+    | IBarrier bk => Next (Barrier (barrier_of bk)) (fun _ => Ret tt);;
               IncPCInterp
     | IAssign r ae =>
         w ← AEInterp ae;
-        Next (RegWrite r true (Some (dep_of_AE ae)) w) (fun _ => Ret tt);;
+        Next (RegWrite r () w (Some (dep_of_AE ae))) (fun _ => Ret tt);;
         IncPCInterp
-    | IBr addr => Next (RegWrite RNPC true empty_depon addr) (fun _ => Ret tt)
+    | IBr addr => Next (RegWrite RNPC () addr None) (fun _ => Ret tt)
     | IBne ae addr =>
         w ← AEInterp ae;
-        (* NOTE: This is not how [BranchAnnounce] is supposed to be used *)
+        (* (* NOTE: This is not how [BranchAnnounce] is supposed to be used *) *)
         Next (BranchAnnounce addr (Some (dep_of_AE ae))) (fun _ => Ret tt);;
         if (bool_decide (w = Z_to_bv _ 0))
         then IncPCInterp
-        else Next (RegWrite RNPC true empty_depon addr) (fun _ => Ret tt)
+        else Next (RegWrite RNPC () addr None) (fun _ => Ret tt)
     | INop => IncPCInterp
     end.
 
-  Definition EmptyInterp : iMon () := Ret tt.
-
-  (* XXX: If InstrInterp gets too unwieldy, might be worth dropping the instruction
-     type and just directly storing coq functions describing instruction
-     behaviour in instruction memory *)
+  Definition EmptyInterp : iMon := Ret tt.
 
 End interpretation.

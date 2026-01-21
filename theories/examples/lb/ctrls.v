@@ -1,38 +1,39 @@
-(*                                                                                  *)
-(*  BSD 2-Clause License                                                            *)
-(*                                                                                  *)
-(*  This applies to all files in this archive except folder                         *)
-(*  "system-semantics".                                                             *)
-(*                                                                                  *)
-(*  Copyright (c) 2023,                                                             *)
-(*     Zongyuan Liu                                                                 *)
-(*     Angus Hammond                                                                *)
-(*     Jean Pichon-Pharabod                                                         *)
-(*     Thibaut Pérami                                                               *)
-(*                                                                                  *)
-(*  All rights reserved.                                                            *)
-(*                                                                                  *)
-(*  Redistribution and use in source and binary forms, with or without              *)
-(*  modification, are permitted provided that the following conditions are met:     *)
-(*                                                                                  *)
-(*  1. Redistributions of source code must retain the above copyright notice, this  *)
-(*     list of conditions and the following disclaimer.                             *)
-(*                                                                                  *)
-(*  2. Redistributions in binary form must reproduce the above copyright notice,    *)
-(*     this list of conditions and the following disclaimer in the documentation    *)
-(*     and/or other materials provided with the distribution.                       *)
-(*                                                                                  *)
-(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"     *)
-(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE       *)
-(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE  *)
-(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE    *)
-(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL      *)
-(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR      *)
-(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER      *)
-(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,   *)
-(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE   *)
-(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *)
-(*                                                                                  *)
+(**************************************************************************************)
+(*  BSD 2-Clause License                                                              *)
+(*                                                                                    *)
+(*  This applies to all files in this archive except folder                           *)
+(*  "system-semantics".                                                               *)
+(*                                                                                    *)
+(*  Copyright (c) 2023,                                                               *)
+(*       Zongyuan Liu                                                                 *)
+(*       Angus Hammond                                                                *)
+(*       Jean Pichon-Pharabod                                                         *)
+(*       Thibaut Pérami                                                               *)
+(*                                                                                    *)
+(*  All rights reserved.                                                              *)
+(*                                                                                    *)
+(*  Redistribution and use in source and binary forms, with or without                *)
+(*  modification, are permitted provided that the following conditions are met:       *)
+(*                                                                                    *)
+(*  1. Redistributions of source code must retain the above copyright notice, this    *)
+(*     list of conditions and the following disclaimer.                               *)
+(*                                                                                    *)
+(*  2. Redistributions in binary form must reproduce the above copyright notice,      *)
+(*     this list of conditions and the following disclaimer in the documentation      *)
+(*     and/or other materials provided with the distribution.                         *)
+(*                                                                                    *)
+(*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"       *)
+(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE         *)
+(*  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE    *)
+(*  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE      *)
+(*  FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL        *)
+(*  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR        *)
+(*  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER        *)
+(*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,     *)
+(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE     *)
+(*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.              *)
+(*                                                                                    *)
+(**************************************************************************************)
 
 From stdpp.bitvector Require Import definitions tactics.
 
@@ -48,8 +49,8 @@ Definition data := (BV 64 1).
 Definition addr_x := (BV 64 0x11).
 Definition addr_y := (BV 64 0x10).
 
-Notation read reg addr := (ILoad AS_normal AV_plain reg (AEval addr)).
-Notation write_val addr := (IStore AS_normal AV_plain "r1" (AEval data) (AEval addr)).
+Notation read reg addr := (ILoad AV_plain AS_normal reg (AEval addr)).
+Notation write_val addr := (IStore AV_plain AS_normal "r1" (AEval data) (AEval addr)).
 Notation branch reg val addr := (IBne (AEbinop AOminus (AEreg reg) (AEval val)) addr).
 
 (* the token ghost state *)
@@ -126,8 +127,8 @@ Section ctrls.
     (∃ rv, "r1" ↦ᵣ rv) -∗
     last_local_write tid addr_x None -∗
     last_local_write tid addr_y None -∗
-    Prot[ addr_x, (1/2)%Qp | lb_prot ] -∗
-    Prot[ addr_y, (1/2)%Qp | lb_prot ] -∗
+    『addr_x , □ | lb_prot 』-∗
+    『addr_y , □ | lb_prot 』-∗
     instrs -∗
     WPi (LTSI.Normal, (BV 64 0x1000)) @ tid
       {{ λ lts',
@@ -135,97 +136,105 @@ Section ctrls.
            ∃ rv, "r1" ↦ᵣ rv ∗ ⌜rv.(reg_val) = bv_0 _⌝)
       }}.
   Proof.
-    iIntros "Hpo_src Hctrl_src Hrmw Hpending [% Hreg] Hlocalw_x Hlocalw_y  Hprot_x Hprot_y Hinstrs".
+    iIntros "Hpo_src Hctrl_src Hrmw Hpending [% Hreg] Hlocalw_x Hlocalw_y #Hprot_x #Hprot_y Hinstrs".
     iDestruct "Hinstrs" as "(#? & #? & #? & #? & _)".
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hpo_src Hctrl_src Hlocalw_x Hprot_x Hrmw Hreg Hpending]").
-    {
-      iApply (iload_pln (λ _ v, ⌜v = bv_0 _⌝ ∗  (⌜v = bv_0 _⌝ ∗ pending))%I ∅ ∅ with "[-Hpending Hprot_x] [Hpending Hprot_x]").
-      iFrame "#∗". rewrite big_sepS_empty big_sepM_empty //.
+    iApply sswpi_wpi.
 
-      iIntros (?). iSplitR.
-      - iIntros "_ _". done.
-      - iExists _,_,_.
-        iSplitL. iIntros "_". iFrame. iExact "Hpending".
-        iIntros (??) "_ _ _ _ _ _ Hpending [#H1|#[H2 Hshot]]".
-        iFrame "Hpending". by iFrame "H1".
-        iExFalso. iApply (pending_shot with "Hpending Hshot").
-    }
-    iIntros (?) "(-> &(%&%&%&(#Hwrite&%&Hreg&Hna&_&Hrfe&Hlpo&_&Hctrl&Hrmw&_)))".
+    iApply (iload_pln (λ _ v, ⌜v = bv_0 _⌝ ∗ (⌜v = bv_0 _⌝ ∗ pending))%I ∅ ∅ with "[$Hreg $Hpo_src $Hctrl_src $Hrmw $Hlocalw_x Hpending]").
+    iFrame "#". rewrite big_sepS_empty big_sepM_empty //.
+    iSplit;first done. iSplit;first done.
+
+    iIntros (?). iSplitR.
+    iIntros "_ _". done.
+    iExists _,_, (pending)%I.
+    iSplitL. iIntros "_". iFrame "#∗". 
+    iIntros (??) "_ _ _ _ _ _ Hpending [#H1|#[H2 Hshot]]".
+    iFrame "Hpending". by iFrame "H1".
+    iExFalso. iApply (pending_shot with "Hpending Hshot").
+
+    iNext. iIntros (???) "(#Hwrite&%&Hreg&Hna&_&Hrfe&Hlpo&_&Hctrl&Hrmw&_)". 
+
     assert (G: ((BV 64 4096) `+Z` 4 = (BV 64 4100))%bv); [bv_solve|]. rewrite G;clear G.
     iDestruct (annot_split_iupd with "Hna") as ">[Hna1 Hna2]".
 
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hreg Hctrl]").
-    {
-      iApply (ibne {["r1" := _ ]} with "[] [Hctrl]" ); [ | | iFrame "#" | iFrame | ].
-      set_solver.
-      2: { by rewrite big_sepM_singleton. }
-      + simpl. rewrite lookup_insert /=. reflexivity.
-    }
+    iApply sswpi_wpi. 
+
+    iApply (ibne {["r1" := _ ]} with "[$Hctrl Hreg]" );  [ | | iFrame "#" | ].
+    set_solver.
+    2: { by rewrite big_sepM_singleton. }
+    simpl. rewrite lookup_insert /=. reflexivity.
+
+    iNext.
     iIntros (?) "(Hreg & Hctrl & [[-> _]|[-> %]])".
-    {
-      assert (G: ((BV 64 4100) `+Z` 4 = (BV 64 4104))%bv); [bv_solve|]. rewrite G.
+    - assert (G: ((BV 64 4100) `+Z` 4 = (BV 64 4104))%bv); [bv_solve|]. rewrite G.
 
       rewrite big_sepM_singleton.
       rewrite (@map_fold_singleton _ _ _ _ _ _ _ _ _ _ _ RegVal) /=.
       rewrite union_empty_r_L. rewrite union_empty_r_L.
 
-      iApply sswpi_wpi. iApply (sswpi_mono with "[Hlocalw_y Hprot_y Hwrite Hlpo Hctrl Hna2]").
+      iApply sswpi_wpi. 
+      iApply (istore_pln (λ _, emp)%I ∅ {[eid := _]} with "[$Hlpo $Hctrl $Hlocalw_y Hna2 Hwrite]"). iFrame "#∗".
+      iSplitR;first done. rewrite big_sepM_singleton. iFrame "Hna2".
+      iExists _.  rewrite big_sepM_singleton. iSplitL. iIntros "HH";iExact "HH".  
+      iIntros (eid'').
+      iSplitR.
       {
-        iApply (istore_pln (λ _, emp)%I ∅ {[eid := _]} with "[Hlpo Hctrl Hlocalw_y Hna2]"). iFrame "#∗".
-        iSplitR;first done. rewrite big_sepM_singleton. iFrame "Hna2".
-        iExists _,_,_. iSplitL. iFrame.  rewrite big_sepM_singleton. iIntros "HH";iExact "HH".
-        iIntros (eid'').
-        iSplitR.
-        - iIntros "HE _ Hctrls". rewrite big_sepS_singleton. rewrite big_sepM_singleton /=.
-          iApply (ctrl_w_is_lob with "HE Hctrls").
-        - iIntros "#Hwrite' % #Hpo''' Hp P".
-          iDestruct "P" as "[% Hpending]".
-          iDestruct (shoot data with "Hpending") as ">#Hshot".
-          iModIntro. iSplitR;first done. iRight. iFrame "Hshot". done.
+        iIntros "HE _ Hctrls". rewrite big_sepS_singleton. rewrite big_sepM_singleton /=.
+        iApply (ctrl_w_is_lob with "HE Hctrls").
       }
-      iIntros (?) "(->& (% &?&?&?&?&?&?&?))".
-      subst. clear G. assert (G: ((BV 64 4104) `+Z` 4 = (BV 64 4108))%bv); [bv_solve|]. rewrite G.
+      {
+        iIntros "#Hwrite' % #Hpo''' Hp P".
+        iDestruct "P" as "[% Hpending]".
+        iDestruct (shoot data with "Hpending") as ">#Hshot".
+        iModIntro. iSplitR;first done. iRight. iFrame "Hshot". done.
+      }
 
-      iApply sswpi_wpi. iApply (sswpi_mono _ _ _ (λ s', ⌜s' = (LTSI.Done, BV 64 4108)⌝)%I).
-      { by iApply idone. }
-      iIntros (? ->). iApply wpi_terminated.
+      iNext.
+      iIntros (?) "(?&?&?&?&?&?&?)".
+      clear G. assert (G: ((BV 64 4104) `+Z` 4 = (BV 64 4108))%bv); [bv_solve|]. rewrite G.
+
+      iApply sswpi_wpi.
+      iApply idone. done.
+      iNext. iIntros (?). iApply wpi_terminated.
       iApply (inst_post_lifting_lifting _ _ _ {[eid:= ⌜v = bv_0 _⌝%I]} with "[Hna1]").
       rewrite dom_singleton_L set_Forall_singleton //.
       rewrite big_sepM_singleton //.
       rewrite big_sepM_singleton //. iIntros. iModIntro.
       iSplit;first done. iExists _. iFrame. simpl. done.
-    }
-    {
-      rewrite big_sepM_singleton.
+
+    - rewrite big_sepM_singleton.
       rewrite (@map_fold_singleton _ _ _ _ _ _ _ _ _ _ _ RegVal) /=.
       rewrite union_empty_r_L. rewrite union_empty_r_L.
 
-      iApply sswpi_wpi. iApply (sswpi_mono with "[Hlocalw_y Hprot_y Hwrite Hlpo Hctrl Hna2]").
+      iApply sswpi_wpi. 
+      iApply (istore_pln (λ _, emp)%I ∅ {[eid := _]} with "[$Hlpo $Hctrl $Hlocalw_y Hna2 Hwrite]"). iFrame "#∗".
+      iSplitR;first done. rewrite big_sepM_singleton. iFrame "Hna2".
+      iExists _. iSplitL. rewrite big_sepM_singleton. iIntros "HH";iExact "HH".
+      iIntros (eid'').
+      iSplitR.
       {
-        iApply (istore_pln (λ _, emp)%I ∅ {[eid := _]} with "[Hlpo Hctrl Hlocalw_y Hna2]"). iFrame "#∗".
-        iSplitR;first done. rewrite big_sepM_singleton. iFrame "Hna2".
-        iExists _,_,_. iSplitL. iFrame. rewrite big_sepM_singleton. iIntros "HH";iExact "HH".
-        iIntros (eid'').
-        iSplitR.
-        - iIntros "HE _ Hctrls". rewrite big_sepM_singleton /=. rewrite big_sepS_singleton.
-          iApply (ctrl_w_is_lob with "HE Hctrls").
-        - iIntros "#Hwrite' % #Hpo''' Hp P".
-          iDestruct "P" as "[% Hpending]".
-          iDestruct (shoot data with "Hpending") as ">#Hshot".
-          iModIntro. iSplitR;first done. iRight. iFrame "Hshot". done.
+        iIntros "HE _ Hctrls". rewrite big_sepM_singleton /=. rewrite big_sepS_singleton.
+        iApply (ctrl_w_is_lob with "HE Hctrls").
       }
-      iIntros (?) "(->& (% &?&?&?&?&?&?&?))".
+      {
+        iIntros "#Hwrite' % #Hpo''' Hp P".
+        iDestruct "P" as "[% Hpending]".
+        iDestruct (shoot data with "Hpending") as ">#Hshot".
+        iModIntro. iSplitR;first done. iRight. iFrame "Hshot". done.
+      }
+      iNext.
+      iIntros (?) "(?&?&?&?&?&?&?)".
       subst. assert (G: ((BV 64 4104) `+Z` 4 = (BV 64 4108))%bv); [bv_solve|]. rewrite G.
 
-      iApply sswpi_wpi. iApply (sswpi_mono _ _ _ (λ s', ⌜s' = (LTSI.Done, BV 64 4108)⌝)%I).
-      { by iApply idone. }
-      iIntros (? ->). iApply wpi_terminated.
+      iApply sswpi_wpi.
+      iApply idone. iFrame "#".
+      iNext.
+      iIntros (?). iApply wpi_terminated.
       iApply (inst_post_lifting_lifting _ _ _ {[eid:= ⌜v = bv_0 _⌝%I]} with "[Hna1]").
       rewrite dom_singleton_L set_Forall_singleton //.
       rewrite big_sepM_singleton //.
       rewrite big_sepM_singleton //. iIntros. iModIntro.
       iSplit;first done. iExists _. iFrame. simpl. done.
-    }
   Qed.
 
   Definition thread_2 tid :
@@ -235,8 +244,8 @@ Section ctrls.
     (∃ rv, "r2" ↦ᵣ rv) -∗
     last_local_write tid addr_x None -∗
     last_local_write tid addr_y None -∗
-    Prot[ addr_x, (1/2)%Qp | lb_prot ] -∗
-    Prot[ addr_y, (1/2)%Qp | lb_prot ] -∗
+    『addr_x , □ | lb_prot 』-∗
+    『addr_y , □ | lb_prot 』-∗
     instrs -∗
     WPi (LTSI.Normal, (BV 64 0x2000)) @ tid
       {{ λ lts',
@@ -244,96 +253,97 @@ Section ctrls.
            ∃ rv, "r2" ↦ᵣ rv ∗ ⌜rv.(reg_val) = bv_0 _ ∨ rv.(reg_val) = data ⌝
       }}.
   Proof.
-    iIntros "Hpo_src Hctrl_src Hrmw [% Hreg] Hlocalw_x Hlocalw_y Hprot_x Hprot_y Hinstrs".
+    iIntros "Hpo_src Hctrl_src Hrmw [% Hreg] Hlocalw_x Hlocalw_y #Hprot_x #Hprot_y Hinstrs".
     iDestruct "Hinstrs" as "(_ & _ & _ & _ & #? & #? & #? & #?)".
     iApply sswpi_wpi.
-    iApply (sswpi_mono with "[Hpo_src Hctrl_src Hlocalw_y Hprot_y Hrmw Hreg]").
-    {
-      iApply (iload_pln (λ e v, lb_prot v e ∗ lb_prot v e)%I ∅ ∅ with "[- Hprot_y] [Hprot_y]").
-      iFrame "#∗". rewrite big_sepM_empty big_sepS_empty //.
+    iApply (iload_pln (λ e v, lb_prot v e ∗ lb_prot v e)%I ∅ ∅ with "[Hpo_src Hctrl_src Hlocalw_y Hprot_y Hrmw Hreg]").
+    iFrame "#∗". rewrite big_sepM_empty big_sepS_empty //.
+    iSplit;first done. iSplit;first done.
 
-      iIntros (?). iSplitR.
-      - iIntros "_ _". done.
-      - iExists _,_,emp%I. iSplitL. iIntros "_";iFrame.
-        iIntros (??) "_ _ _ _ _ _ _ #?". by iFrame "#".
-    }
-    iIntros (?) "(->&(%&%&%&(#Hwrite&%&Hreg&Hna&_&Hrfe&Hpo&_&Hctrl&Hrmw&_)))".
+    iIntros (?). iSplitR.
+    { iIntros "_ _". done. }
+    { iExists _,_,emp%I. iSplitL. iIntros "_";iFrame "#".
+      iIntros (??) "_ _ _ _ _ _ _ #?". by iFrame "#". }
+
+    iNext.
+    iIntros (???) "(#Hwrite&%&Hreg&Hna&_&Hrfe&Hpo&_&Hctrl&Hrmw&_)".
     assert (G: ((BV 64 8192) `+Z` 4 = (BV 64 8196))%bv); [bv_solve|]. rewrite G.
     iDestruct (annot_split_iupd with "Hna") as ">[Hna1 Hna2]".
 
-    iApply sswpi_wpi. iApply (sswpi_mono with "[Hreg Hctrl]").
-    {
-      iApply (ibne {["r2" := _ ]} with "[] [Hctrl]" ); [ | | iFrame "#" | iFrame | ].
-      set_solver.
-      2: { by rewrite big_sepM_singleton. }
-      + simpl. rewrite lookup_insert /=. reflexivity.
-    }
+    iApply sswpi_wpi.
+    iApply (ibne {["r2" := _ ]} with "[$Hctrl Hreg]" ); [ | | iFrame "#" | ].
+    set_solver.
+    2: { by rewrite big_sepM_singleton. }
+    simpl. rewrite lookup_insert /=. reflexivity.
+
+    iNext.
     iIntros (?) "(Hreg & Hctrl & [[-> %]|[-> %]])".
-    {
-      clear G. assert (G: ((BV 64 8196) `+Z` 4 = (BV 64 8200))%bv); [bv_solve|]. rewrite G.
+    - clear G. assert (G: ((BV 64 8196) `+Z` 4 = (BV 64 8200))%bv); [bv_solve|]. rewrite G.
 
       rewrite big_sepM_singleton.
       rewrite (@map_fold_singleton _ _ _ _ _ _ _ _ _ _ _ RegVal) /=.
       rewrite union_empty_r_L. rewrite union_empty_r_L.
 
-      iApply sswpi_wpi. iApply (sswpi_mono with "[Hlocalw_x Hprot_x Hwrite Hpo Hctrl Hna1]").
+      iApply sswpi_wpi. 
+      iApply (istore_pln (λ _, emp)%I ∅ {[eid := _]} with "[$Hpo $Hctrl $Hlocalw_x Hna1 Hwrite]"). iFrame "#∗".
+      iSplitR;first done. rewrite big_sepM_singleton. iFrame "Hna1".
+      iExists _. rewrite big_sepM_singleton. iSplitL. iFrame. iIntros "HH";iExact "HH".
+      iIntros (eid'').
+      iSplitR.
       {
-        iApply (istore_pln (λ _, emp)%I ∅ {[eid := _]} with "[Hpo Hctrl Hlocalw_x Hna1]"). iFrame "#∗".
-        iSplitR;first done. rewrite big_sepM_singleton. iFrame "Hna1".
-        iExists _,_,_. rewrite big_sepM_singleton. iSplitL. iFrame. iIntros "HH";iExact "HH".
-        iIntros (eid'').
-        iSplitR.
-        - iIntros "HE _ Hctrls". rewrite big_sepM_singleton /=. rewrite big_sepS_singleton.
-          iApply (ctrl_w_is_lob with "HE Hctrls").
-        - iIntros "#Hwrite' % #Hpo''' Hp P".
-          iDestruct "P" as "#P".
-          iModIntro. iSplitR;first done.
-          rewrite /lb_prot.
-          assert (v = data)%bv as Heq.
-          {
-            clear -H5.
-            rewrite /data in H5. rewrite /data.
-            destruct (bool_decide (v = BV 64 1)) eqn:Heqn.
-            rewrite bool_decide_eq_true in Heqn. done.
-            rewrite bool_decide_eq_false in Heqn.
-            unfold Val in v. unfold AAArch.val in v. unfold AAval in v. unfold AAArch.val_size in v.
-            assert ((v - BV 64 1)%bv = (v `-Z` 1)%bv). bv_solve.
-            rewrite H in H5. clear H.
-            assert (bv_unsigned v ≠ 1).
-            { intro Heq. apply Heqn. apply bv_eq. rewrite Heq. done. }
-            apply bv_eq in H5.
-            rewrite bv_sub_Z_unsigned /= in H5.
-            rewrite bv_unsigned_BV in H5.
-            bv_simplify_arith. bv_saturate_unsigned; bv_solve_unfold_tac.
-            unfold bv_signed, bv_swrap, bv_wrap, bv_half_modulus, bv_modulus, bv_unsigned in *.
-            simpl in *. destruct v. lia.
-          }
-          iDestruct "P" as "[-> | [-> Hshot]]".
-          {
-            rewrite /data in Heq.
-            assert (bv_0 64 = BV 64 0)%bv. bv_solve.
-            rewrite H7 in Heq. inversion Heq.
-          }
-          {
-            iRight. iFrame "Hshot". done.
-          }
+        iIntros "HE _ Hctrls". rewrite big_sepM_singleton /=. rewrite big_sepS_singleton.
+        iApply (ctrl_w_is_lob with "HE Hctrls").
       }
-      iIntros (?) "(->& (% &?&?&?&?&?&?&?))".
+      {
+        iIntros "#Hwrite' % #Hpo''' Hp P".
+        iDestruct "P" as "#P".
+        iModIntro. iSplitR;first done.
+        rewrite /lb_prot.
+        assert (v = data)%bv as Heq.
+        {
+          clear -H5.
+          rewrite /data in H5. rewrite /data.
+          destruct (bool_decide (v = BV 64 1)) eqn:Heqn.
+          rewrite bool_decide_eq_true in Heqn. done.
+          rewrite bool_decide_eq_false in Heqn.
+          unfold Val in v.
+          assert ((v - BV 64 1)%bv = (v `-Z` 1)%bv).
+          { unfold dw_size in v. bv_solve. }
+          rewrite H in H5. clear H.
+          assert (bv_unsigned v ≠ 1).
+          { intro Heq. apply Heqn. apply bv_eq. rewrite Heq. done. }
+          apply bv_eq in H5.
+          rewrite bv_sub_Z_unsigned /= in H5.
+          rewrite bv_unsigned_BV in H5.
+          bv_simplify_arith. bv_saturate_unsigned; bv_solve_unfold_tac.
+          unfold bv_signed, bv_swrap, bv_wrap, bv_half_modulus, bv_modulus, bv_unsigned in *.
+          simpl in *. destruct v. lia.
+        }
+        iDestruct "P" as "[-> | [-> Hshot]]".
+        + rewrite /data in Heq.
+          assert (bv_0 64 = BV 64 0)%bv. bv_solve.
+          rewrite H7 in Heq. inversion Heq.
+        + iRight. iFrame "Hshot". done.
+      }
+
+      iNext.
+      iIntros (?) "(?&?&?&?&?&?&?)".
       subst. clear G. assert (G: ((BV 64 8200) `+Z` 4 = (BV 64 8204))%bv); [bv_solve|]. rewrite G.
 
-      iApply sswpi_wpi. iApply (sswpi_mono _ _ _ (λ s', ⌜s' = (LTSI.Done, BV 64 8204)⌝)%I).
-      { by iApply idone. }
-      iIntros (? ->). iApply wpi_terminated.
+      iApply sswpi_wpi. iApply idone. iFrame "#".
+      iIntros (?). iApply wpi_terminated.
       iApply (inst_post_lifting_lifting _ _ _ {[eid:= (lb_prot v eid')]} with "[Hna2]").
       rewrite dom_singleton_L set_Forall_singleton //.
       rewrite big_sepM_singleton //.
-      rewrite big_sepM_singleton //. iIntros "#Hprot". iModIntro.
+      rewrite big_sepM_singleton //.
+
+      iNext.
+      iIntros "#Hprot". iModIntro.
       iSplit;first done. iExists _. iFrame. simpl. iDestruct "Hprot" as "[#? | [#? _]]".
 
       iLeft. done. iRight. done.
-    }
-    {
-      rewrite big_sepM_singleton.
+
+    - rewrite big_sepM_singleton.
       rewrite (@map_fold_singleton _ _ _ _ _ _ _ _ _ _ _ RegVal) /=.
       rewrite union_empty_r_L. rewrite union_empty_r_L.
 
@@ -347,7 +357,6 @@ Section ctrls.
       iSplit;first done. iExists _. iFrame. simpl. iDestruct "Hprot" as "[#? | [#? _]]".
 
       iLeft. done. iRight. done.
-    }
   Qed.
 
 End ctrls.

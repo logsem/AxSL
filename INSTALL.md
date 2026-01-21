@@ -41,9 +41,9 @@ opam install dune
 
 ### Coq
 
-Install Coq `8.18.0`
+Install Coq `8.19.2`
 ```
-opam pin coq 8.18.0
+opam pin coq 8.19.2
 ```
 
 ### Coq libraries
@@ -55,15 +55,15 @@ You need to add the iris opam repository to install Iris and stdpp :
 opam repo add iris-dev https://gitlab.mpi-sws.org/iris/opam.git
 ```
 
-This development uses Iris 4.2.0:
+This development uses Iris 4.3.0:
 ```
-opam install coq-iris.4.2.0 -y
+opam install coq-iris.4.3.0 -y
 ```
 
-This development uses `stdpp` and `stdpp-bitvector` 1.10.0: 
+This development uses `stdpp` and `stdpp-bitvector` 1.11.0: 
 ```
-opam install coq-stdpp.1.10.0 -y
-opam install coq-stdpp-bitvector.1.10.0 -y
+opam install coq-stdpp.1.11.0 -y
+opam install coq-stdpp-bitvector.1.11.0 -y
 ```
 
 #### iris-named-props
@@ -77,7 +77,7 @@ git clone https://github.com/tchajed/iris-named-props.git
 
 In the cloned directory, check out to the version that has been tested:
 ```
-git checkout 327119f
+git checkout 3cf2d976f5d55ad2ec64baa42a2877af103f774b
 ```
 
 Install with opam:

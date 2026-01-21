@@ -2,13 +2,17 @@
  (name SSCCommon)
  (package coq-system-semantics)
  (modules
+   Options
    Common
+   CArith
    CBase
+   CDestruct
    CList
    CBool
    CBitvector
    CInduction
    CMaps
+   COption
    CSets
    GRel
    Exec)
@@ -17,7 +21,6 @@
    stdpp
    RecordUpdate
    Hammer.Tactics
-   bbv
-   Sail
+   Equations
  )
 )
